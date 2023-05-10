@@ -3,7 +3,7 @@ use std::io::{Read, Seek, Cursor};
 use byteorder::{ReadBytesExt, LittleEndian};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedIPlane, EncodedMacroBlock, ImageSlice, MotionVector, EncodedPPlane}, dct::DctQuantizedMatrix8x8, def::VideoFrame, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}, dec};
+use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedIPlane, EncodedMacroBlock, ImageSlice, MotionVector, EncodedPPlane}, dct::DctQuantizedMatrix8x8, def::VideoFrame, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
 use crate::huffman::*;
 
 pub struct Decoder<TReader: Read + Seek> {
@@ -203,7 +203,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let enc_plane_u = Decoder::<TReader>::read_iplane_data(self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
             let enc_plane_v = Decoder::<TReader>::read_iplane_data(self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
 
-            let dec_planes: Vec<_> = [enc_plane_y, enc_plane_u, enc_plane_v].par_iter().map(|x| {
+            let dec_planes: Vec<_> = [enc_plane_y, enc_plane_u, enc_plane_v].iter().map(|x| {
                 ImageSlice::decode_plane(x)
             }).collect();
 
@@ -491,12 +491,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
 
     fn decode_subblock<R: Read + Seek>(reader: &mut R) -> Result<DctQuantizedMatrix8x8, std::io::Error> {
         let mut subblock_data = [0;64];
-        match reader.read_exact(&mut subblock_data) {
-            Ok(_) => {}
-            Err(e) => {
-                panic!("WTF");
-            }
-        };
+        reader.read_exact(&mut subblock_data)?;
 
         // inv zigzag scan to get final subblock data
         Ok(DctQuantizedMatrix8x8::inv_zigzag_scan(&subblock_data))
