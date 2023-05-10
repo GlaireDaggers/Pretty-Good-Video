@@ -1,0 +1,16 @@
+[package]
+name = "pgv_rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Hazel Stagner"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.test]
+opt-level = 3
+
+[dependencies]
+byteorder = "1.4.3"
+image = "0.24.6"
+lazy_static = "1.4.0"
+rayon = "1.7.0"
+wav = "1.0.0"
