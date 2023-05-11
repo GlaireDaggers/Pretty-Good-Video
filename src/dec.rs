@@ -376,7 +376,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
 
     fn read_plane_data(reader: &mut TReader, enc_len: usize, dec_len: usize, tree: &HuffmanTree) -> Result<Vec<u8>, std::io::Error> {
         let mut compressed_enc_blob = vec![0;enc_len];
-        reader.read_exact(&mut compressed_enc_blob).expect("FUCK");
+        reader.read_exact(&mut compressed_enc_blob)?;
 
         let mut compressed_enc_blob_cursor = Cursor::new(compressed_enc_blob);
 
