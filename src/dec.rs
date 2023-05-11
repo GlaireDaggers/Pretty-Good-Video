@@ -1,7 +1,7 @@
 use std::io::{Read, Seek, Cursor};
 
 use byteorder::{ReadBytesExt, LittleEndian};
-// use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedIPlane, EncodedMacroBlock, ImageSlice, MotionVector, EncodedPPlane}, dct::DctQuantizedMatrix8x8, def::VideoFrame, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
 use crate::huffman::*;
@@ -203,7 +203,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let enc_plane_u = Decoder::<TReader>::read_iplane_data(self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
             let enc_plane_v = Decoder::<TReader>::read_iplane_data(self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
 
-            let dec_planes: Vec<_> = [enc_plane_y, enc_plane_u, enc_plane_v].iter().map(|x| {
+            let dec_planes: Vec<_> = [enc_plane_y, enc_plane_u, enc_plane_v].par_iter().map(|x| {
                 ImageSlice::decode_plane(x)
             }).collect();
 
@@ -241,7 +241,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let enc_plane_u = Decoder::<TReader>::read_pplane_data(self.width as usize / 2, self.height as usize / 2, &header_u, &mut enc_blob_reader)?;
             let enc_plane_v = Decoder::<TReader>::read_pplane_data(self.width as usize / 2, self.height as usize / 2, &header_v, &mut enc_blob_reader)?;
             
-            let dec_planes: Vec<_> = [(enc_plane_y, &self.cur_frame.plane_y), (enc_plane_u, &self.cur_frame.plane_u), (enc_plane_v, &self.cur_frame.plane_v)].iter().map(|x| {
+            let dec_planes: Vec<_> = [(enc_plane_y, &self.cur_frame.plane_y), (enc_plane_u, &self.cur_frame.plane_u), (enc_plane_v, &self.cur_frame.plane_v)].par_iter().map(|x| {
                 ImageSlice::decode_delta_plane(&x.0, x.1)
             }).collect();
 
