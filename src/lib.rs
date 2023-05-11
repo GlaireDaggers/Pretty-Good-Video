@@ -8,7 +8,7 @@ mod huffman;
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, fs::File, time::Instant, io::{Cursor, Read}};
+    use std::{path::Path, fs::File, time::Instant, io::{Cursor, Read, BufWriter, BufReader}};
 
     use crate::{common::ImageSlice, dct::{DctMatrix8x8, Q_TABLE_INTRA, DctQuantizedMatrix8x8}, enc::Encoder, def::VideoFrame, dec::Decoder, huffman::HuffmanTree};
     use image::{io::Reader as ImageReader, GrayImage, RgbImage};
@@ -150,7 +150,9 @@ mod tests {
         encoder.encode_audio(audio_data_channels);
         println!("Encoded audio");
 
-        let mut out_video = File::create("test.pgv").unwrap();
+        let out_video = File::create("test.pgv").unwrap();
+        let mut out_video = BufWriter::new(out_video);
+
         encoder.write(&mut out_video).unwrap();
     }
 
@@ -160,6 +162,8 @@ mod tests {
             println!("RUN {}", run);
 
             let in_video = File::open("test.pgv").unwrap();
+            let in_video = BufReader::new(in_video);
+
             let mut decoder = Decoder::new(in_video).unwrap();
 
             let start = Instant::now();
@@ -189,6 +193,8 @@ mod tests {
     #[test]
     fn test_decoder() {
         let in_video = File::open("test.pgv").unwrap();
+        let in_video = BufReader::new(in_video);
+
         let mut decoder = Decoder::new(in_video).unwrap();
 
         assert!(decoder.width == 512 && decoder.height == 384);

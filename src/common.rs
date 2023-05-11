@@ -154,17 +154,13 @@ impl ImageSlice<u8> {
         residual
     }
 
-    pub fn apply_residual(from: &ImageSlice<u8>, residuals: &ImageSlice<u8>) -> ImageSlice<u8> {
+    pub fn apply_residual(from: &ImageSlice<u8>, residuals: &ImageSlice<u8>, into: &mut ImageSlice<u8>) {
         assert!(from.width == residuals.width && from.height == residuals.height);
-
-        let mut to = ImageSlice::new(from.width, from.height);
 
         for idx in 0..from.pixels.len() {
             let delta = (residuals.pixels[idx] as i16 - 128) << 1;
-            to.pixels[idx] = (from.pixels[idx] as i16 + delta).clamp(0, 255) as u8;
+            into.pixels[idx] = (from.pixels[idx] as i16 + delta).clamp(0, 255) as u8;
         }
-
-        to
     }
 
     pub fn decode_plane(src: &EncodedIPlane) -> ImageSlice<u8> {
@@ -182,6 +178,7 @@ impl ImageSlice<u8> {
 
     pub fn decode_delta_plane(src: &EncodedPPlane, prev: &ImageSlice<u8>) -> ImageSlice<u8> {
         let mut plane = ImageSlice::new(src.blocks_wide * 16, src.blocks_high * 16);
+        let mut tmp_block = ImageSlice::new(16, 16);
 
         for block_y in 0..src.blocks_high {
             for block_x in 0..src.blocks_wide {
@@ -189,8 +186,8 @@ impl ImageSlice<u8> {
                 let px = (((block_x * 16) as i32) + (motion.x as i32)) as usize;
                 let py = (((block_y * 16) as i32) + (motion.y as i32)) as usize;
                 let prev_block = prev.get_slice(px, py, 16, 16);
-                let block = ImageSlice::decode_delta_block(&src.blocks[block_x + (block_y * src.blocks_wide)], &prev_block);
-                plane.blit(&block, block_x * 16, block_y * 16, 0, 0, 16, 16);
+                ImageSlice::decode_delta_block(&src.blocks[block_x + (block_y * src.blocks_wide)], &prev_block, &mut tmp_block);
+                plane.blit(&tmp_block, block_x * 16, block_y * 16, 0, 0, 16, 16);
             }
         }
 
@@ -287,7 +284,7 @@ impl ImageSlice<u8> {
         block
     }
 
-    fn decode_delta_block(src: &EncodedMacroBlock, prev: &ImageSlice<u8>) -> ImageSlice<u8> {
+    fn decode_delta_block(src: &EncodedMacroBlock, prev: &ImageSlice<u8>, into: &mut ImageSlice<u8>) {
         let subblocks = [
             ImageSlice::decode_subblock(&src.subblocks[0], &Q_TABLE_INTER),
             ImageSlice::decode_subblock(&src.subblocks[1], &Q_TABLE_INTER),
@@ -300,7 +297,7 @@ impl ImageSlice<u8> {
         block.blit(&subblocks[2], 0, 8, 0, 0, 8, 8);
         block.blit(&subblocks[3], 8, 8, 0, 0, 8, 8);
 
-        ImageSlice::apply_residual(prev, &block)
+        ImageSlice::apply_residual(prev, &block, into);
     }
 
     fn decode_subblock(src: &DctQuantizedMatrix8x8, q_table: &[f32;64]) -> ImageSlice<u8> {
