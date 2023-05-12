@@ -1,6 +1,7 @@
 pub mod def;
 pub mod enc;
 pub mod dec;
+pub mod clib;
 mod common;
 mod dct;
 mod qoa;
