@@ -29,6 +29,7 @@ pub struct Decoder<TReader: Read + Seek> {
     audio_dec_pos: usize,
     audio_dec_len: usize,
     read_audio_frames: u32,
+    rle_buffer: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -142,6 +143,18 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         let pad_width = width + (16 - (width % 16)) % 16;
         let pad_height = height + (16 - (height % 16)) % 16;
 
+        let blocks_wide = pad_width / 16;
+        let blocks_high = pad_height / 16;
+
+        let chroma_blocks_wide = blocks_wide / 2;
+        let chroma_blocks_high = blocks_high / 2;
+
+        let blocks_luma = blocks_wide * blocks_high;
+        let blocks_chroma = chroma_blocks_wide * chroma_blocks_high;
+
+        let total_blocks = blocks_luma + (blocks_chroma * 2);
+        let rle_buffer_len = total_blocks * 256;
+
         Ok(Decoder {
             version: version,
             num_frames: num_frames,
@@ -165,6 +178,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             audio_dec_buffer: Vec::new(),
             audio_dec_pos: 0,
             audio_dec_len: 0,
+            rle_buffer: vec![0;rle_buffer_len as usize],
         })
     }
 
@@ -195,8 +209,8 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let enc_blob = Decoder::read_plane_data(&mut self.reader, enc_blob_len, dec_blob_len, &mut self.huffman_tree)?;
             
             // run-length decode
-            let dec_blob = Decoder::<TReader>::runlength_decode(&enc_blob);
-            let mut enc_blob_reader = Cursor::new(dec_blob);
+            Decoder::<TReader>::runlength_decode(&enc_blob, &mut self.rle_buffer);
+            let mut enc_blob_reader = Cursor::new(&self.rle_buffer);
 
             // decode planes
             let enc_plane_y = Decoder::<TReader>::read_iplane_data(self.width as usize, self.height as usize, &mut enc_blob_reader)?;
@@ -210,10 +224,6 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let plane_y = &dec_planes[0];
             let plane_u = &dec_planes[1];
             let plane_v = &dec_planes[2];
-
-            //let plane_y = ImageSlice::decode_plane(&enc_plane_y);
-            //let plane_u = ImageSlice::decode_plane(&enc_plane_u);
-            //let plane_v = ImageSlice::decode_plane(&enc_plane_v);
 
             self.cur_frame.plane_y.blit(plane_y, 0, 0, 0, 0, plane_y.width, plane_y.height);
             self.cur_frame.plane_u.blit(plane_u, 0, 0, 0, 0, plane_u.width, plane_u.height);
@@ -232,9 +242,9 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let enc_blob = Decoder::read_plane_data(&mut self.reader, enc_blob_len, dec_blob_len, &mut self.huffman_tree)?;
 
             // run-length decode
-            let dec_blob = Decoder::<TReader>::runlength_decode(&enc_blob);
+            Decoder::<TReader>::runlength_decode(&enc_blob, &mut self.rle_buffer);
 
-            let mut enc_blob_reader = Cursor::new(dec_blob);
+            let mut enc_blob_reader = Cursor::new(&self.rle_buffer);
 
             // decode planes
             let enc_plane_y = Decoder::<TReader>::read_pplane_data(self.width as usize, self.height as usize, &header_y, &mut enc_blob_reader)?;
@@ -248,10 +258,6 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let plane_y = &dec_planes[0];
             let plane_u = &dec_planes[1];
             let plane_v = &dec_planes[2];
-
-            //let plane_y = ImageSlice::decode_delta_plane(&enc_plane_y, &self.cur_frame.plane_y);
-            //let plane_u = ImageSlice::decode_delta_plane(&enc_plane_u, &self.cur_frame.plane_u);
-            //let plane_v = ImageSlice::decode_delta_plane(&enc_plane_v, &self.cur_frame.plane_v);
 
             self.cur_frame.plane_y.blit(&plane_y, 0, 0, 0, 0, plane_y.width, plane_y.height);
             self.cur_frame.plane_u.blit(&plane_u, 0, 0, 0, 0, plane_u.width, plane_u.height);
@@ -475,28 +481,26 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         })
     }
 
-    fn runlength_decode(encoded: &[u8]) -> Vec<u8> {
-        let mut result_len = 0;
-
-        let mut idx = 0;
-        while idx < encoded.len() {
-            result_len += encoded[idx] as usize + 1;
-            idx += 2;
-        }
-
-        let mut result = vec![0;result_len];
+    fn runlength_decode(encoded: &[u8], into: &mut [u8]) {
         let mut out_idx = 0;
         
-        idx = 0;
+        let mut idx = 0;
         while idx < encoded.len() {
-            out_idx += encoded[idx] as usize;
-            result[out_idx] = encoded[idx + 1];
+            let run = encoded[idx] as usize;
+            
+            into[out_idx..(out_idx + run)].fill(0);
+            out_idx += run;
+
+            // RLE can sometimes be padded with a last dummy 0 value, exit loop in this case
+            if out_idx >= into.len() {
+                break;
+            }
+
+            into[out_idx] = encoded[idx + 1];
             out_idx += 1;
 
             idx += 2;
         }
-
-        result
     }
 
     fn decode_subblock<R: Read + Seek>(reader: &mut R) -> Result<DctQuantizedMatrix8x8, std::io::Error> {

@@ -169,25 +169,13 @@ mod tests {
 
             let start = Instant::now();
 
-            let mut min = u128::MAX;
-            let mut max = 0;
-            let mut total = 0;
-
             for _ in 0..decoder.num_frames {
-                let fs = Instant::now();
                 decoder.decode_frame().unwrap().unwrap();
-                let fdur = fs.elapsed().as_millis();
-                min = min.min(fdur);
-                max = max.max(fdur);
-                total += fdur;
             }
-
-            let avg = (total as f32) / (decoder.num_frames as f32);
 
             let duration = start.elapsed().as_millis();
             let fps = decoder.num_frames as f32 / (duration as f32 / 1000.0);
-            println!("Decoded {} frames in {} ms ({} FPS, min: {}, max: {}, avg: {})", decoder.num_frames, duration, fps,
-                min, max, avg);
+            println!("Decoded {} frames in {} ms ({} FPS)", decoder.num_frames, duration, fps);
         }
     }
 
