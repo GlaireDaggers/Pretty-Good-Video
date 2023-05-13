@@ -3,7 +3,7 @@ use std::io::{Read, Seek, Cursor};
 use byteorder::{ReadBytesExt, LittleEndian};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 
-use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedIPlane, EncodedMacroBlock, ImageSlice, MotionVector, EncodedPPlane}, dct::DctQuantizedMatrix8x8, def::VideoFrame, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
+use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedIPlane, EncodedMacroBlock, MotionVector, EncodedPPlane}, dct::DctQuantizedMatrix8x8, def::{VideoFrame, ImageSlice}, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
 use crate::huffman::*;
 
 pub struct Decoder<TReader: Read + Seek> {

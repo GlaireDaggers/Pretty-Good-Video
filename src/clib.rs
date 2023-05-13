@@ -50,7 +50,7 @@ pub extern "C" fn pgv_decoder_new(stream: *mut PGV_Stream) -> *mut c_void {
 #[no_mangle]
 pub extern "C" fn pgv_decoder_destroy(decoder: *mut c_void) {
     unsafe {
-        Box::from_raw(decoder as *mut Decoder<PGV_Stream>);
+        drop(Box::from_raw(decoder as *mut Decoder<PGV_Stream>));
     }
 }
 
