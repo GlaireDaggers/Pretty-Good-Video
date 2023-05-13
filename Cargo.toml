@@ -7,6 +7,8 @@ license = "MIT"
 repository = "https://github.com/GlaireDaggers/Pretty-Good-Video"
 authors = ["Hazel Stagner"]
 exclude = ["*.png", "*.wav", "*.pgv", "/demo"]
+categories = ["multimedia::video", "multimedia::encoding"]
+keywords = ["codec", "video", "av"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.test]
