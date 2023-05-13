@@ -1,5 +1,5 @@
-/target
-/Cargo.lock
+target
+**/Cargo.lock
 /test_frames_out
 /audio_out_c000.wav
 /audio_out_c001.wav
