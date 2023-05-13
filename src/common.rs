@@ -4,14 +4,8 @@ pub const PGV_MAGIC: &[u8] = b"PGVIDEO\0";
 pub const PGV_VERSION: u32 = 100;
 pub const PGV_HEADERSIZE: u32 = 52;
 
-use crate::dct::{DctQuantizedMatrix8x8, DctMatrix8x8, Q_TABLE_INTER, Q_TABLE_INTRA};
+use crate::{dct::{DctQuantizedMatrix8x8, DctMatrix8x8, Q_TABLE_INTER, Q_TABLE_INTRA}, def::ImageSlice};
 use rayon::prelude::*;
-
-pub struct ImageSlice<TPixel> {
-    pub width: usize,
-    pub height: usize,
-    pub pixels: Vec<TPixel>,
-}
 
 #[derive(Clone, Copy)]
 pub struct MotionVector {
@@ -59,18 +53,6 @@ pub struct EncodedPPlane {
 }
 
 impl<TPixel: Copy + Default> ImageSlice<TPixel> {
-    pub fn new(width: usize, height: usize) -> ImageSlice<TPixel> {
-        ImageSlice { width: width, height: height, pixels: vec![TPixel::default();width * height] }
-    }
-
-    pub fn from_slice(width: usize, height: usize, buffer: &[TPixel]) -> ImageSlice<TPixel> {
-        assert!(buffer.len() == (width * height));
-        let mut slice = ImageSlice::new(width, height);
-        slice.pixels.copy_from_slice(buffer);
-
-        slice
-    }
-
     pub fn reduce(self: &ImageSlice<TPixel>) -> ImageSlice<TPixel> {
         let mut new_slice = ImageSlice::new(self.width / 2, self.height / 2);
 

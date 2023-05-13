@@ -11,7 +11,7 @@ mod huffman;
 mod tests {
     use std::{path::Path, fs::File, time::Instant, io::{Cursor, Read}};
 
-    use crate::{common::ImageSlice, dct::{DctMatrix8x8, Q_TABLE_INTRA, DctQuantizedMatrix8x8}, enc::Encoder, def::VideoFrame, dec::Decoder, huffman::HuffmanTree};
+    use crate::{dct::{DctMatrix8x8, Q_TABLE_INTRA, DctQuantizedMatrix8x8}, enc::Encoder, def::{VideoFrame, ImageSlice}, dec::Decoder, huffman::HuffmanTree};
     use image::{io::Reader as ImageReader, GrayImage, RgbImage};
     use wav::WAV_FORMAT_PCM;
 

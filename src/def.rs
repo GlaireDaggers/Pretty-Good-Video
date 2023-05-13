@@ -1,4 +1,8 @@
-use crate::common::ImageSlice;
+pub struct ImageSlice<TPixel> {
+    pub width: usize,
+    pub height: usize,
+    pub pixels: Vec<TPixel>,
+}
 
 pub struct VideoFrame {
     pub width: usize,
@@ -6,6 +10,20 @@ pub struct VideoFrame {
     pub plane_y: ImageSlice<u8>,
     pub plane_u: ImageSlice<u8>,
     pub plane_v: ImageSlice<u8>,
+}
+
+impl<TPixel: Copy + Default> ImageSlice<TPixel> {
+    pub fn new(width: usize, height: usize) -> ImageSlice<TPixel> {
+        ImageSlice { width: width, height: height, pixels: vec![TPixel::default();width * height] }
+    }
+
+    pub fn from_slice(width: usize, height: usize, buffer: &[TPixel]) -> ImageSlice<TPixel> {
+        assert!(buffer.len() == (width * height));
+        let mut slice = ImageSlice::new(width, height);
+        slice.pixels.copy_from_slice(buffer);
+
+        slice
+    }
 }
 
 impl VideoFrame {

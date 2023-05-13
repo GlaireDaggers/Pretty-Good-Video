@@ -3,7 +3,7 @@ use std::iter::zip;
 
 use crate::common::{PGV_MAGIC, PGV_VERSION, PGV_HEADERSIZE};
 use crate::qoa::{EncodedAudioFrame, QOA_LMS_LEN, QOA_SLICE_LEN, QOA_FRAME_LEN, LMS, QOA_DEQUANT_TABLE, qoa_lms_predict, qoa_div, QOA_QUANT_TABLE};
-use crate::{common::{ImageSlice, EncodedFrame, EncodedIFrame, EncodedPFrame, EncodedPPlane}, def::VideoFrame};
+use crate::{common::{EncodedFrame, EncodedIFrame, EncodedPFrame, EncodedPPlane}, def::{VideoFrame, ImageSlice}};
 use byteorder::{self, WriteBytesExt, LittleEndian};
 use crate::huffman::*;
 
