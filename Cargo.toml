@@ -6,6 +6,7 @@ description = "Library for working with PGV (a toy MPEG-like video codec)"
 license = "MIT"
 repository = "https://github.com/GlaireDaggers/Pretty-Good-Video"
 authors = ["Hazel Stagner"]
+exclude = ["*.png", "*.wav", "*.pgv"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.test]
