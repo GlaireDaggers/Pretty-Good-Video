@@ -156,6 +156,27 @@ mod tests {
     }
 
     #[test]
+    fn test_encoder_2() {
+        let mut encoder = Encoder::new(1280, 720, 30, 48000, 2);
+
+        for frame_id in 1..100 {
+            let frame_path = format!("test_frames_2/{:0>3}.png", frame_id);
+            let frame = load_frame(frame_path);
+
+            if (frame_id - 1) % 16 == 0 {
+                encoder.encode_iframe(&frame);
+            } else {
+                encoder.encode_pframe(&frame);
+            }
+
+            println!("Encoded: {} / {}", frame_id, 10);
+        }
+
+        let mut out_video = File::create("test_2.pgv").unwrap();
+        encoder.write(&mut out_video).unwrap();
+    }
+
+    #[test]
     fn test_decoder_speed() {
         for run in 0..10 {
             println!("RUN {}", run);
@@ -218,6 +239,26 @@ mod tests {
         }
 
         println!("Decoded audio");
+    }
+
+    #[test]
+    fn test_decoder_2() {
+        let in_video = File::open("test_2.pgv").unwrap();
+        let mut decoder = Decoder::new(in_video).unwrap();
+
+        assert!(decoder.width == 1280 && decoder.height == 720);
+        assert!(decoder.framerate == 30);
+        assert!(decoder.samplerate == 48000);
+        assert!(decoder.channels == 2);
+
+        for idx in 1..decoder.num_frames + 1 {
+            let frame = decoder.decode_frame().unwrap().unwrap();
+
+            let frame_out_path = format!("test_frames_out_2/{:0>3}.png", idx);
+            save_frame(frame_out_path, &frame);
+
+            println!("Decoded: {} / {}", idx, decoder.num_frames);
+        }
     }
 
     #[test]

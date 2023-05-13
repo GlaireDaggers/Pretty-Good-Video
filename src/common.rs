@@ -219,7 +219,7 @@ impl ImageSlice<u8> {
             ImageSlice::encode_block(x, &Q_TABLE_INTRA)
         }).collect();
 
-        EncodedIPlane { width: self.width, height: self.height, blocks_wide: blocks_wide, blocks_high: blocks_high, blocks: enc_result }
+        EncodedIPlane { width: pad_width, height: pad_height, blocks_wide: blocks_wide, blocks_high: blocks_high, blocks: enc_result }
     }
 
     pub fn encode_delta_plane(from: &ImageSlice<u8>, to: &ImageSlice<u8>) -> EncodedPPlane {

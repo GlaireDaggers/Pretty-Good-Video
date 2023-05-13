@@ -143,11 +143,17 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         let pad_width = width + (16 - (width % 16)) % 16;
         let pad_height = height + (16 - (height % 16)) % 16;
 
+        let chroma_width = width / 2;
+        let chroma_height = height / 2;
+
+        let chroma_pad_width = chroma_width + (16 - (chroma_width % 16)) % 16;
+        let chroma_pad_height = chroma_height + (16 - (chroma_height % 16)) % 16;
+
         let blocks_wide = pad_width / 16;
         let blocks_high = pad_height / 16;
 
-        let chroma_blocks_wide = blocks_wide / 2;
-        let chroma_blocks_high = blocks_high / 2;
+        let chroma_blocks_wide = chroma_pad_width / 16;
+        let chroma_blocks_high = chroma_pad_height / 16;
 
         let blocks_luma = blocks_wide * blocks_high;
         let blocks_chroma = chroma_blocks_wide * chroma_blocks_high;
@@ -172,7 +178,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             video_pos: video_offset as usize,
             pic_in_gop: 0,
             huffman_tree: HuffmanTree::empty(),
-            cur_frame: VideoFrame::new(pad_width as usize, pad_height as usize),
+            cur_frame: VideoFrame::new_padded(width as usize, height as usize),
             read_frames: 0,
             read_audio_frames: 0,
             audio_dec_buffer: Vec::new(),

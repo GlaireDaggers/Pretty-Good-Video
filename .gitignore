@@ -1,8 +1,10 @@
 target
 **/Cargo.lock
 /test_frames_out
+/test_frames_out_2
 /audio_out_c000.wav
 /audio_out_c001.wav
 /test1_dct.png
 /test1_enc.png
-/test.pgv
+/test_2.pgv
+/test_frames_2

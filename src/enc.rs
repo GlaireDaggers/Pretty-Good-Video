@@ -23,7 +23,7 @@ impl Encoder {
         assert!(width % 2 == 0 && height % 2 == 0);
 
         Encoder { width: width, height: height, framerate: framerate, audio_samplerate: audio_samplerate, audio_channels: audio_channels,
-            frames: Vec::new(), audio: Vec::new(), prev_frame: VideoFrame::new(width, height) }
+            frames: Vec::new(), audio: Vec::new(), prev_frame: VideoFrame::new_padded(width, height) }
     }
 
     pub fn write<TWriter: Write>(self: &Encoder, writer: &mut TWriter) -> Result<(), std::io::Error> {
@@ -100,6 +100,9 @@ impl Encoder {
 
     pub fn encode_iframe(self: &mut Encoder, frame: &VideoFrame) {
         assert!(frame.width == self.width && frame.height == self.height);
+        assert!(frame.plane_y.width == frame.width && frame.plane_y.height == frame.height);
+        assert!(frame.plane_u.width == frame.width / 2 && frame.plane_u.height == frame.height / 2);
+        assert!(frame.plane_v.width == frame.width / 2 && frame.plane_v.height == frame.height / 2);
 
         let enc_y = frame.plane_y.encode_plane();
         let dec_y = ImageSlice::decode_plane(&enc_y);
@@ -120,13 +123,18 @@ impl Encoder {
     pub fn encode_pframe(self: &mut Encoder, frame: &VideoFrame) {
         assert!(frame.width == self.width && frame.height == self.height);
 
-        let enc_y = ImageSlice::encode_delta_plane(&self.prev_frame.plane_y, &frame.plane_y);
+        let mut frame_copy = VideoFrame::new_padded(frame.width, frame.height);
+        frame_copy.plane_y.blit(&frame.plane_y, 0, 0, 0, 0, frame.plane_y.width, frame.plane_y.height);
+        frame_copy.plane_u.blit(&frame.plane_u, 0, 0, 0, 0, frame.plane_u.width, frame.plane_u.height);
+        frame_copy.plane_v.blit(&frame.plane_v, 0, 0, 0, 0, frame.plane_v.width, frame.plane_v.height);
+
+        let enc_y = ImageSlice::encode_delta_plane(&self.prev_frame.plane_y, &frame_copy.plane_y);
         let dec_y = ImageSlice::decode_delta_plane(&enc_y, &self.prev_frame.plane_y);
 
-        let enc_u = ImageSlice::encode_delta_plane(&self.prev_frame.plane_u, &frame.plane_u);
+        let enc_u = ImageSlice::encode_delta_plane(&self.prev_frame.plane_u, &frame_copy.plane_u);
         let dec_u = ImageSlice::decode_delta_plane(&enc_u, &self.prev_frame.plane_u);
 
-        let enc_v = ImageSlice::encode_delta_plane(&self.prev_frame.plane_v, &frame.plane_v);
+        let enc_v = ImageSlice::encode_delta_plane(&self.prev_frame.plane_v, &frame_copy.plane_v);
         let dec_v = ImageSlice::decode_delta_plane(&enc_v, &self.prev_frame.plane_v);
 
         self.frames.push(EncodedFrame::PFrame(EncodedPFrame { y: enc_y, u: enc_u, v: enc_v } ));
