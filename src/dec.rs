@@ -293,7 +293,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         let mut samples_written = 0;
         while samples_written < output_len {
             let samples_in_buffer = self.audio_dec_len - self.audio_dec_pos;
-            let samples_to_write = samples_in_buffer.clamp(0, output_len);
+            let samples_to_write = samples_in_buffer.clamp(0, output_len - samples_written);
 
             if samples_to_write > 0 {
                 let slice_start = self.audio_dec_pos;
