@@ -2,15 +2,20 @@
 name = "pgv_rs"
 version = "0.1.0"
 edition = "2021"
+description = "Library for working with PGV (a toy MPEG-like video codec)"
+license = "MIT"
+repository = "https://github.com/GlaireDaggers/Pretty-Good-Video"
 authors = ["Hazel Stagner"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [profile.test]
 opt-level = 3
 
+[dev-dependencies]
+image = "0.24.6"
+wav = "1.0.0"
+
 [dependencies]
 byteorder = "1.4.3"
-image = "0.24.6"
 lazy_static = "1.4.0"
 rayon = "1.7.0"
-wav = "1.0.0"
