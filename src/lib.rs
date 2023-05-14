@@ -196,9 +196,19 @@ mod tests {
         let mut sample_index = 0;
         while sample_index < samples {
             let frame_len = QOA_FRAME_LEN.clamp(0, samples - sample_index);
+            /*let sample_start = sample_index;
+            let sample_end = sample_start + frame_len;
+
+            let inp: Vec<_> = audio.iter().map(|x| {
+                let mut v = vec![0;frame_len];
+                v.copy_from_slice(&x[sample_start..sample_end]);
+                v
+            }).collect();*/
 
             let frame = encode_audio_frame(&audio, &mut lmses, sample_index, frame_len);
-            decode_audio_frame(audio.len(), &frame);
+
+            //let dec = decode_audio_frame(audio.len(), &frame);
+
             output.push(frame);
             sample_index += QOA_FRAME_LEN;
         }
@@ -248,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_audio() {
-        let mut inp_audio_file = File::open("test_audio.wav").unwrap();
+        let mut inp_audio_file = File::open("test_audio_2.wav").unwrap();
         let (audio_header, audio_data) = wav::read(&mut inp_audio_file).unwrap();
 
         let audio_data: Vec<i16> = match audio_data {

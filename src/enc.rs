@@ -351,7 +351,7 @@ impl Encoder {
 
                 // brute force search for best scale factor (just loop through all possible scale factors and compare error)
 
-                let mut best_err = i16::MAX as i32;
+                let mut best_err = i64::MAX as i64;
                 let mut best_slice = Vec::new();
                 let mut best_slice_scalefactor = 0;
                 let mut best_lms = LMS { history: [0;QOA_LMS_LEN], weight: [0;QOA_LMS_LEN] };
@@ -376,7 +376,7 @@ impl Encoder {
                         let quantized = QOA_QUANT_TABLE[(clamped + 8) as usize];
                         let dequantized = table[quantized as usize];
                         let reconstructed = (predicted + dequantized).clamp(i16::MIN as i32, i16::MAX as i32);
-                        let error = sample - reconstructed;
+                        let error = (sample - reconstructed) as i64;
                         current_error += error * error;
                         if current_error > best_err {
                             break;
@@ -393,6 +393,10 @@ impl Encoder {
                         best_lms = lms;
                     }
                 }
+
+                // if best_err is i64::MAX, that implies that *no* suitable scalefactor could be found
+                // something has gone wrong here
+                assert!(best_err < i64::MAX);
 
                 lmses[c] = best_lms;
 
