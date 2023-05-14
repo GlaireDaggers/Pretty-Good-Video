@@ -69,8 +69,8 @@ impl LMS {
 
 pub fn qoa_div(v: i32, scalefactor: usize) -> i32 {
     let reciprocal = QOA_RECIPROCAL_TABLE[scalefactor];
-	let n = (v * reciprocal + (1 << 15)) >> 16;
-	let n = n + ((v > 0) as i32 - (v < 0) as i32) - ((n > 0) as i32 - (n < 0) as i32); /* round away from 0 */
+	let n = (v.wrapping_mul(reciprocal) + (1 << 15)) >> 16;
+	let n = n + (((v > 0) as i32) - ((v < 0) as i32)) - (((n > 0) as i32) - ((n < 0) as i32)); /* round away from 0 */
 	return n;
 }
 

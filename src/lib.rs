@@ -9,9 +9,9 @@ mod huffman;
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, fs::File, time::Instant, io::{Cursor, Read}};
+    use std::{path::Path, fs::File, time::Instant, io::{Cursor, Read}, println, vec};
 
-    use crate::{dct::{DctMatrix8x8, Q_TABLE_INTRA, DctQuantizedMatrix8x8}, enc::Encoder, def::{VideoFrame, ImageSlice}, dec::Decoder, huffman::HuffmanTree};
+    use crate::{dct::{DctMatrix8x8, Q_TABLE_INTRA, DctQuantizedMatrix8x8}, enc::Encoder, def::{VideoFrame, ImageSlice}, dec::Decoder, huffman::HuffmanTree, qoa::{EncodedAudioFrame, QOA_SLICE_LEN, LMS, QOA_LMS_LEN, QOA_DEQUANT_TABLE, qoa_lms_predict, qoa_div, QOA_QUANT_TABLE, QOA_FRAME_LEN}};
     use image::{io::Reader as ImageReader, GrayImage, RgbImage};
     use wav::WAV_FORMAT_PCM;
 
@@ -94,6 +94,198 @@ mod tests {
         let test_inv_zigzag = DctQuantizedMatrix8x8::inv_zigzag_scan(&test_zigzag);
         
         println!("INV ZIGZAG MATRIX: {:?}", test_inv_zigzag.m);
+    }
+
+    fn encode_audio_frame(audio: &Vec<Vec<i16>>, lmses: &mut Vec<LMS>, sample_offset: usize, frame_len: usize) -> EncodedAudioFrame {
+        let mut result = EncodedAudioFrame {
+            samples: frame_len as usize,
+            slices: Vec::new(),
+            lmses: lmses.clone(),
+        };
+
+        let mut sample_index = 0;
+        while sample_index < frame_len {
+            for c in 0..audio.len() {
+                let slice_start = sample_index;
+                let slice_len = QOA_SLICE_LEN.clamp(0, frame_len - sample_index);
+
+                // brute force search for best scale factor (just loop through all possible scale factors and compare error)
+
+                let mut best_err = i64::MAX as i64;
+                let mut best_slice = Vec::new();
+                let mut best_slice_scalefactor = 0;
+                let mut best_lms = LMS { history: [0;QOA_LMS_LEN], weight: [0;QOA_LMS_LEN] };
+                let sampledata = &audio[c];
+
+                for scalefactor in 0..16 {
+                    let mut lms = lmses[c];
+                    let table = QOA_DEQUANT_TABLE[scalefactor];
+
+                    let mut slice = Vec::new();
+                    let mut current_error = 0;
+                    let mut idx = slice_start + sample_offset;
+
+                    for _ in 0..slice_len {
+                        let sample = sampledata[idx] as i32;
+                        idx += 1;
+
+                        let predicted = qoa_lms_predict(lms);
+                        let residual = sample - predicted;
+                        let scaled = qoa_div(residual, scalefactor);
+                        let clamped = scaled.clamp(-8, 8);
+                        let quantized = QOA_QUANT_TABLE[(clamped + 8) as usize];
+                        let dequantized = table[quantized as usize];
+                        let reconstructed = (predicted + dequantized).clamp(i16::MIN as i32, i16::MAX as i32);
+                        let error = (sample - reconstructed) as i64;
+                        current_error += error * error;
+                        if current_error > best_err {
+                            break;
+                        }
+
+                        lms.update(reconstructed, dequantized);
+                        slice.push(quantized);
+                    }
+
+                    if current_error < best_err {
+                        best_err = current_error;
+                        best_slice = slice;
+                        best_slice_scalefactor = scalefactor;
+                        best_lms = lms;
+                    }
+                }
+
+                // if best_err is i64::MAX, that implies that *no* suitable scalefactor could be found
+                // something has gone wrong here
+                assert!(best_err < i64::MAX);
+
+                lmses[c] = best_lms;
+
+                // pack bits into slice - low 4 bits are scale factor, remaining 60 bits are quantized residuals
+                let mut slice = (best_slice_scalefactor & 0xF) as u64;
+
+                for i in 0..best_slice.len() {
+                    let v = best_slice[i] as u64;
+                    slice |= ((v & 0x7) << ((i * 3) + 4)) as u64;
+                }
+
+                result.slices.push(slice);
+            }
+
+            sample_index += QOA_SLICE_LEN;
+        }
+
+        result
+    }
+
+    fn encode_audio(audio: Vec<Vec<i16>>) -> Vec<EncodedAudioFrame> {
+        let mut output = Vec::new();
+        let samples = audio[0].len();
+
+        for a in &audio {
+            assert!(a.len() == samples);
+        }
+
+        // init LMS
+        let mut lmses: Vec<LMS> = audio.iter().map(|_| {
+            LMS {
+                weight: [0, 0, -(1 << 13), 1 << 14],
+                history: [0, 0, 0, 0]
+            }
+        }).collect();
+
+        let mut sample_index = 0;
+        while sample_index < samples {
+            let frame_len = QOA_FRAME_LEN.clamp(0, samples - sample_index);
+
+            let frame = encode_audio_frame(&audio, &mut lmses, sample_index, frame_len);
+            decode_audio_frame(audio.len(), &frame);
+            output.push(frame);
+            sample_index += QOA_FRAME_LEN;
+        }
+
+        output
+    }
+
+    fn decode_audio_frame(channels: usize, frame: &EncodedAudioFrame) -> Vec<Vec<i16>> {
+        // read number of samples per channel in this frame & number of slices
+        let samples = frame.samples as i32;
+        let slice_count = frame.slices.len() as i32;
+
+        let mut audio: Vec<Vec<i16>> = Vec::new();
+
+        for _ in 0..channels {
+            audio.push(vec![0;samples as usize]);
+        }
+
+        // read LMS state
+        let mut lmses = frame.lmses.clone();
+
+        for slice_idx in 0..slice_count {
+            let slice_ch = slice_idx % channels as i32;
+            let mut slice = frame.slices[slice_idx as usize];
+
+            // decode slice
+            let scalefactor = slice & 0xF;
+            slice = slice >> 4;
+
+            let slice_start = (slice_idx / channels as i32) as usize * QOA_SLICE_LEN;
+            let slice_end = (slice_start + QOA_SLICE_LEN).clamp(0, samples as usize);
+
+            for i in slice_start..slice_end {
+                let quantized = slice & 0x7;
+                slice >>= 3;
+                let predicted = qoa_lms_predict(lmses[slice_ch as usize]);
+                let dequantized = QOA_DEQUANT_TABLE[scalefactor as usize][quantized as usize];
+                let reconstructed = (predicted + dequantized).clamp(i16::MIN as i32, i16::MAX as i32);
+
+                audio[slice_ch as usize][i] = reconstructed as i16;
+                lmses[slice_ch as usize].update(reconstructed, dequantized);
+            }
+        }
+
+        audio
+    }
+
+    #[test]
+    fn test_audio() {
+        let mut inp_audio_file = File::open("test_audio.wav").unwrap();
+        let (audio_header, audio_data) = wav::read(&mut inp_audio_file).unwrap();
+
+        let audio_data: Vec<i16> = match audio_data {
+            wav::BitDepth::Eight(v) => {
+                v.iter().map(|x| {
+                    let f = (*x as f32 / 128.0) - 1.0;
+                    (f * 32768.0) as i16
+                }).collect()
+            }
+            wav::BitDepth::Sixteen(v) => {
+                v
+            }
+            wav::BitDepth::ThirtyTwoFloat(v) => {
+                v.iter().map(|x| {
+                    (*x * 32768.0) as i16
+                }).collect()
+            }
+            _ => {
+                panic!("Not implemented")
+            }
+        };
+
+        let mut audio_data_channels = Vec::new();
+
+        for c in 0..audio_header.channel_count as usize {
+            let ch: Vec<_> = audio_data.iter().enumerate().filter(|(idx, _)| {
+                *idx > c && (*idx - c) % audio_header.channel_count as usize == 0
+            }).collect();
+
+            let ch_data: Vec<_> = ch.iter().map(|(_, v)| **v).collect();
+
+            audio_data_channels.push(ch_data);
+        }
+
+        let enc_result = encode_audio(audio_data_channels);
+
+        println!("Encoded {} samples in {} frames", audio_data.len() / audio_header.channel_count as usize, enc_result.len());
     }
 
     #[test]

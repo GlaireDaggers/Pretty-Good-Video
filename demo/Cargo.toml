@@ -8,5 +8,5 @@ edition = "2021"
 debug = true
 
 [dependencies]
-pgv_rs = "0.1.3"
+pgv_rs = "0.1.4"
 sdl2 = "0.35.2"
