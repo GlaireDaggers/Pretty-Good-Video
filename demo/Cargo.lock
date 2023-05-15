@@ -125,9 +125,7 @@ dependencies = [
 
 [[package]]
 name = "pgv_rs"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28b04d2a75c84f056a0f96323cfc478902d235c1e9db1ca4ce7a698e50695dcc"
+version = "0.1.6"
 dependencies = [
  "byteorder",
  "lazy_static",
