@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_decoder_speed() {
-        for run in 0..10 {
+        for run in 0..50 {
             println!("RUN {}", run);
 
             let mut in_video = File::open("test.pgv").unwrap();

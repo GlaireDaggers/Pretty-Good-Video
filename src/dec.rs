@@ -30,6 +30,12 @@ pub struct Decoder<TReader: Read + Seek> {
     audio_dec_len: usize,
     read_audio_frames: u32,
     rle_buffer: Vec<u8>,
+    block_buf_y: Vec<EncodedMacroBlock>,
+    block_buf_u: Vec<EncodedMacroBlock>,
+    block_buf_v: Vec<EncodedMacroBlock>,
+    mvec_buf_y: Vec<MotionVector>,
+    mvec_buf_u: Vec<MotionVector>,
+    mvec_buf_v: Vec<MotionVector>,
 }
 
 #[derive(Debug)]
@@ -185,6 +191,12 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             audio_dec_pos: 0,
             audio_dec_len: 0,
             rle_buffer: vec![0;rle_buffer_len as usize],
+            block_buf_y: Vec::with_capacity((blocks_wide * blocks_high) as usize),
+            block_buf_u: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
+            block_buf_v: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
+            mvec_buf_y: Vec::with_capacity((blocks_wide * blocks_high) as usize),
+            mvec_buf_u: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
+            mvec_buf_v: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
         })
     }
 
@@ -219,12 +231,12 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let mut enc_blob_reader = Cursor::new(&self.rle_buffer);
 
             // decode planes
-            let enc_plane_y = Decoder::<TReader>::read_iplane_data(self.width as usize, self.height as usize, &mut enc_blob_reader)?;
-            let enc_plane_u = Decoder::<TReader>::read_iplane_data(self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
-            let enc_plane_v = Decoder::<TReader>::read_iplane_data(self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
+            let enc_plane_y = Decoder::<TReader>::read_iplane_data(&mut self.block_buf_y, self.width as usize, self.height as usize, &mut enc_blob_reader)?;
+            let enc_plane_u = Decoder::<TReader>::read_iplane_data(&mut self.block_buf_u, self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
+            let enc_plane_v = Decoder::<TReader>::read_iplane_data(&mut self.block_buf_v, self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
 
-            let dec_planes: Vec<_> = [enc_plane_y, enc_plane_u, enc_plane_v].par_iter().map(|x| {
-                ImageSlice::decode_plane(x)
+            let dec_planes: Vec<_> = [(enc_plane_y, &self.block_buf_y), (enc_plane_u, &self.block_buf_u), (enc_plane_v, &self.block_buf_v)].par_iter().map(|(plane, blockbuf)| {
+                ImageSlice::decode_plane_2(plane, &blockbuf)
             }).collect();
 
             let plane_y = &dec_planes[0];
@@ -238,9 +250,9 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             // decode p-frame
             // decode headers for each plane, then decode data for each plane
 
-            let header_y = Decoder::read_pplane_headers(self.width as usize, self.height as usize, &mut self.reader)?;
-            let header_u = Decoder::read_pplane_headers(self.width as usize / 2, self.height as usize / 2, &mut self.reader)?;
-            let header_v = Decoder::read_pplane_headers(self.width as usize / 2, self.height as usize / 2, &mut self.reader)?;
+            Decoder::read_pplane_headers(&mut self.mvec_buf_y, self.width as usize, self.height as usize, &mut self.reader)?;
+            Decoder::read_pplane_headers(&mut self.mvec_buf_u, self.width as usize / 2, self.height as usize / 2, &mut self.reader)?;
+            Decoder::read_pplane_headers(&mut self.mvec_buf_v, self.width as usize / 2, self.height as usize / 2, &mut self.reader)?;
 
             // read in huffman-compressed blob
             let enc_blob_len = self.reader.read_u32::<LittleEndian>()? as usize;
@@ -253,12 +265,12 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let mut enc_blob_reader = Cursor::new(&self.rle_buffer);
 
             // decode planes
-            let enc_plane_y = Decoder::<TReader>::read_pplane_data(self.width as usize, self.height as usize, &header_y, &mut enc_blob_reader)?;
-            let enc_plane_u = Decoder::<TReader>::read_pplane_data(self.width as usize / 2, self.height as usize / 2, &header_u, &mut enc_blob_reader)?;
-            let enc_plane_v = Decoder::<TReader>::read_pplane_data(self.width as usize / 2, self.height as usize / 2, &header_v, &mut enc_blob_reader)?;
+            let enc_plane_y = Decoder::<TReader>::read_pplane_data(&mut self.block_buf_y, self.width as usize, self.height as usize, &self.mvec_buf_y, &mut enc_blob_reader)?;
+            let enc_plane_u = Decoder::<TReader>::read_pplane_data(&mut self.block_buf_u, self.width as usize / 2, self.height as usize / 2, &self.mvec_buf_u, &mut enc_blob_reader)?;
+            let enc_plane_v = Decoder::<TReader>::read_pplane_data(&mut self.block_buf_v, self.width as usize / 2, self.height as usize / 2, &self.mvec_buf_v, &mut enc_blob_reader)?;
             
-            let dec_planes: Vec<_> = [(enc_plane_y, &self.cur_frame.plane_y), (enc_plane_u, &self.cur_frame.plane_u), (enc_plane_v, &self.cur_frame.plane_v)].par_iter().map(|x| {
-                ImageSlice::decode_delta_plane(&x.0, x.1)
+            let dec_planes: Vec<_> = [(enc_plane_y, &self.block_buf_y, &self.cur_frame.plane_y), (enc_plane_u, &self.block_buf_u, &self.cur_frame.plane_u), (enc_plane_v, &self.block_buf_v, &self.cur_frame.plane_v)].par_iter().map(|x| {
+                ImageSlice::decode_delta_plane_2(&x.0, &x.1, x.2)
             }).collect();
 
             let plane_y = &dec_planes[0];
@@ -339,10 +351,10 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         let samples = self.reader.read_u16::<LittleEndian>()? as i32;
         let slice_count = self.reader.read_u16::<LittleEndian>()? as i32;
 
-        let mut audio: Vec<Vec<i16>> = Vec::new();
+        let mut audio: Vec<Vec<i16>> = Vec::with_capacity(self.channels as usize);
 
         // read LMS state
-        let mut lmses = Vec::new();
+        let mut lmses = Vec::with_capacity(self.channels as usize);
 
         for _ in 0..self.channels {
             let mut history = [0;QOA_LMS_LEN];
@@ -405,35 +417,35 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         Ok(enc_data)
     }
 
-    fn read_pplane_headers(width: usize, height: usize, reader: &mut TReader) -> Result<Vec<MotionVector>, std::io::Error> {
+    fn read_pplane_headers(mblock: &mut Vec<MotionVector>, width: usize, height: usize, reader: &mut TReader) -> Result<(), std::io::Error> {
         let pad_width: usize = width + (16 - (width % 16)) % 16;
         let pad_height = height + (16 - (height % 16)) % 16;
 
         let blocks_wide = pad_width / 16;
         let blocks_high = pad_height / 16;
 
-        let mut result = Vec::new();
+        mblock.clear();
 
         for _ in 0..blocks_high {
             for _ in 0..blocks_wide {
                 let mx = reader.read_i8()?;
                 let my = reader.read_i8()?;
 
-                result.push(MotionVector{ x: mx, y: my });
+                mblock.push(MotionVector{ x: mx, y: my });
             }
         }
 
-        Ok(result)
+        Ok(())
     }
 
-    fn read_pplane_data<R: Read + Seek>(width: usize, height: usize, header: &[MotionVector], reader: &mut R) -> Result<EncodedPPlane, std::io::Error> {
+    fn read_pplane_data<R: Read + Seek>(mblock: &mut Vec<EncodedMacroBlock>, width: usize, height: usize, header: &[MotionVector], reader: &mut R) -> Result<EncodedPPlane, std::io::Error> {
         let pad_width: usize = width + (16 - (width % 16)) % 16;
         let pad_height = height + (16 - (height % 16)) % 16;
 
         let blocks_wide = pad_width / 16;
         let blocks_high = pad_height / 16;
 
-        let mut macroblocks: Vec<EncodedMacroBlock> = Vec::new();
+        mblock.clear();
 
         for _ in 0..blocks_high {
             for _ in 0..blocks_wide {
@@ -443,7 +455,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
                 let subblock_2 = Decoder::<TReader>::decode_subblock(reader)?;
                 let subblock_3 = Decoder::<TReader>::decode_subblock(reader)?;
 
-                macroblocks.push(EncodedMacroBlock { subblocks: [subblock_0, subblock_1, subblock_2, subblock_3] });
+                mblock.push(EncodedMacroBlock { subblocks: [subblock_0, subblock_1, subblock_2, subblock_3] });
             }
         }
 
@@ -452,19 +464,19 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             height: height,
             blocks_wide: blocks_wide,
             blocks_high: blocks_high,
-            blocks: macroblocks,
+            blocks: Vec::new(),
             offset: header.to_vec()
         })
     }
 
-    fn read_iplane_data<R: Read + Seek>(width: usize, height: usize, reader: &mut R) -> Result<EncodedIPlane, std::io::Error> {
+    fn read_iplane_data<R: Read + Seek>(mblock: &mut Vec<EncodedMacroBlock>, width: usize, height: usize, reader: &mut R) -> Result<EncodedIPlane, std::io::Error> {
         let pad_width: usize = width + (16 - (width % 16)) % 16;
         let pad_height = height + (16 - (height % 16)) % 16;
 
         let blocks_wide = pad_width / 16;
         let blocks_high = pad_height / 16;
 
-        let mut macroblocks: Vec<EncodedMacroBlock> = Vec::new();
+        mblock.clear();
 
         for _ in 0..blocks_high {
             for _ in 0..blocks_wide {
@@ -474,7 +486,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
                 let subblock_2 = Decoder::<TReader>::decode_subblock(reader)?;
                 let subblock_3 = Decoder::<TReader>::decode_subblock(reader)?;
 
-                macroblocks.push(EncodedMacroBlock { subblocks: [subblock_0, subblock_1, subblock_2, subblock_3] });
+                mblock.push(EncodedMacroBlock { subblocks: [subblock_0, subblock_1, subblock_2, subblock_3] });
             }
         }
 
@@ -483,7 +495,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             height: height,
             blocks_wide: blocks_wide,
             blocks_high: blocks_high,
-            blocks: macroblocks
+            blocks: Vec::new()
         })
     }
 
