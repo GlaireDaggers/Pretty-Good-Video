@@ -166,18 +166,18 @@ impl ImageSlice<u8> {
         plane
     }
 
-    pub fn decode_plane_2(src: &EncodedIPlane, blockbuf: &Vec<EncodedMacroBlock>, resultbuf: &mut Vec<ImageSlice<u8>>, cur_plane: &mut ImageSlice<u8>) {
-        let total_blocks = src.blocks_wide * src.blocks_high;
+    pub fn decode_plane_2(blocks_wide: usize, blocks_high: usize, blockbuf: &Vec<EncodedMacroBlock>, resultbuf: &mut Vec<ImageSlice<u8>>, cur_plane: &mut ImageSlice<u8>) {
+        let total_blocks = blocks_wide * blocks_high;
         (0..total_blocks).into_par_iter().map(|x| {
-            let block_x = x % src.blocks_wide;
-            let block_y = x / src.blocks_wide;
+            let block_x = x % blocks_wide;
+            let block_y = x / blocks_wide;
 
-            ImageSlice::decode_block(&blockbuf[block_x + (block_y * src.blocks_wide)])
+            ImageSlice::decode_block(&blockbuf[block_x + (block_y * blocks_wide)])
         }).collect_into_vec(resultbuf);
 
-        for block_y in 0..src.blocks_high {
-            for block_x in 0..src.blocks_wide {
-                let block = &resultbuf[block_x + (block_y * src.blocks_wide)];
+        for block_y in 0..blocks_high {
+            for block_x in 0..blocks_wide {
+                let block = &resultbuf[block_x + (block_y * blocks_wide)];
                 cur_plane.blit(block, block_x * 16, block_y * 16, 0, 0, 16, 16);
             }
         }
@@ -211,25 +211,25 @@ impl ImageSlice<u8> {
         plane
     }
 
-    pub fn decode_delta_plane_2(src: &EncodedPPlane, blockbuf: &Vec<EncodedMacroBlock>, resultbuf: &mut Vec<ImageSlice<u8>>, cur_plane: &mut ImageSlice<u8>) {
-        let total_blocks = src.blocks_wide * src.blocks_high;
+    pub fn decode_delta_plane_2(blocks_wide: usize, blocks_high: usize, mvec: &Vec<MotionVector>, blockbuf: &Vec<EncodedMacroBlock>, resultbuf: &mut Vec<ImageSlice<u8>>, cur_plane: &mut ImageSlice<u8>) {
+        let total_blocks = blocks_wide * blocks_high;
         (0..total_blocks).into_par_iter().map(|x| {
-            let block_x = x % src.blocks_wide;
-            let block_y = x / src.blocks_wide;
+            let block_x = x % blocks_wide;
+            let block_y = x / blocks_wide;
 
-            let motion = src.offset[block_x + (block_y * src.blocks_wide)];
+            let motion = mvec[block_x + (block_y * blocks_wide)];
             let px = (((block_x * 16) as i32) + (motion.x as i32)) as usize;
             let py = (((block_y * 16) as i32) + (motion.y as i32)) as usize;
             let prev_block = cur_plane.get_slice(px, py, 16, 16);
             let mut new_block = ImageSlice::new(16, 16);
-            ImageSlice::decode_delta_block(&blockbuf[block_x + (block_y * src.blocks_wide)], &prev_block, &mut new_block);
+            ImageSlice::decode_delta_block(&blockbuf[block_x + (block_y * blocks_wide)], &prev_block, &mut new_block);
 
             new_block
         }).collect_into_vec(resultbuf);
 
-        for block_y in 0..src.blocks_high {
-            for block_x in 0..src.blocks_wide {
-                let block = &resultbuf[block_x + (block_y * src.blocks_wide)];
+        for block_y in 0..blocks_high {
+            for block_x in 0..blocks_wide {
+                let block = &resultbuf[block_x + (block_y * blocks_wide)];
                 cur_plane.blit(block, block_x * 16, block_y * 16, 0, 0, 16, 16);
             }
         }

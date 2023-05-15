@@ -3,7 +3,7 @@ use std::io::{Read, Seek, Cursor};
 use byteorder::{ReadBytesExt, LittleEndian};
 use rayon::prelude::{ParallelIterator, IntoParallelRefMutIterator};
 
-use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedIPlane, EncodedMacroBlock, MotionVector, EncodedPPlane}, dct::DctQuantizedMatrix8x8, def::{VideoFrame, ImageSlice}, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
+use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedMacroBlock, MotionVector}, dct::DctQuantizedMatrix8x8, def::{VideoFrame, ImageSlice}, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
 use crate::huffman::*;
 
 pub struct Decoder<TReader: Read + Seek> {
@@ -39,6 +39,8 @@ pub struct Decoder<TReader: Read + Seek> {
     dec_buf_y: Vec<ImageSlice<u8>>,
     dec_buf_u: Vec<ImageSlice<u8>>,
     dec_buf_v: Vec<ImageSlice<u8>>,
+    enc_buf: Vec<u8>,
+    dec_buf: Vec<u8>,
 }
 
 #[derive(Debug)]
@@ -203,6 +205,8 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             dec_buf_y: Vec::with_capacity((blocks_wide * blocks_high) as usize),
             dec_buf_u: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
             dec_buf_v: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
+            enc_buf: Vec::new(),
+            dec_buf: Vec::new(),
         })
     }
 
@@ -230,22 +234,25 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             // read in huffman-compressed blob
             let enc_blob_len = self.reader.read_u32::<LittleEndian>()? as usize;
             let dec_blob_len = self.reader.read_u32::<LittleEndian>()? as usize;
-            let enc_blob = Decoder::read_plane_data(&mut self.reader, enc_blob_len, dec_blob_len, &mut self.huffman_tree)?;
+            Decoder::read_plane_data(&mut self.reader, enc_blob_len, dec_blob_len, &mut self.huffman_tree, &mut self.enc_buf, &mut self.dec_buf)?;
             
             // run-length decode
-            Decoder::<TReader>::runlength_decode(&enc_blob, &mut self.rle_buffer);
+            Decoder::<TReader>::runlength_decode(&self.dec_buf, &mut self.rle_buffer);
             let mut enc_blob_reader = Cursor::new(&self.rle_buffer);
 
             // decode planes
-            let enc_plane_y = Decoder::<TReader>::read_iplane_data(&mut self.block_buf_y, self.width as usize, self.height as usize, &mut enc_blob_reader)?;
-            let enc_plane_u = Decoder::<TReader>::read_iplane_data(&mut self.block_buf_u, self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
-            let enc_plane_v = Decoder::<TReader>::read_iplane_data(&mut self.block_buf_v, self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
+            Decoder::<TReader>::read_iplane_data(&mut self.block_buf_y, self.width as usize, self.height as usize, &mut enc_blob_reader)?;
+            Decoder::<TReader>::read_iplane_data(&mut self.block_buf_u, self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
+            Decoder::<TReader>::read_iplane_data(&mut self.block_buf_v, self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
 
-            [(enc_plane_y, &self.block_buf_y, &mut self.cur_frame.plane_y, &mut self.dec_buf_y),
-                (enc_plane_u, &self.block_buf_u, &mut self.cur_frame.plane_u, &mut self.dec_buf_u),
-                (enc_plane_v, &self.block_buf_v, &mut self.cur_frame.plane_v, &mut self.dec_buf_v)]
+            [(&self.block_buf_y, &mut self.cur_frame.plane_y, &mut self.dec_buf_y),
+                (&self.block_buf_u, &mut self.cur_frame.plane_u, &mut self.dec_buf_u),
+                (&self.block_buf_v, &mut self.cur_frame.plane_v, &mut self.dec_buf_v)]
             .par_iter_mut().for_each(|x| {
-                ImageSlice::decode_plane_2(&x.0, &x.1, x.3, x.2);
+                let blocks_wide = x.1.width / 16;
+                let blocks_high = x.1.height / 16;
+
+                ImageSlice::decode_plane_2(blocks_wide, blocks_high, &x.0, x.2, x.1);
             });
         } else {
             // decode p-frame
@@ -258,23 +265,26 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             // read in huffman-compressed blob
             let enc_blob_len = self.reader.read_u32::<LittleEndian>()? as usize;
             let dec_blob_len = self.reader.read_u32::<LittleEndian>()? as usize;
-            let enc_blob = Decoder::read_plane_data(&mut self.reader, enc_blob_len, dec_blob_len, &mut self.huffman_tree)?;
+            Decoder::read_plane_data(&mut self.reader, enc_blob_len, dec_blob_len, &mut self.huffman_tree, &mut self.enc_buf, &mut self.dec_buf)?;
 
             // run-length decode
-            Decoder::<TReader>::runlength_decode(&enc_blob, &mut self.rle_buffer);
+            Decoder::<TReader>::runlength_decode(&self.dec_buf, &mut self.rle_buffer);
 
             let mut enc_blob_reader = Cursor::new(&self.rle_buffer);
 
             // decode planes
-            let enc_plane_y = Decoder::<TReader>::read_pplane_data(&mut self.block_buf_y, self.width as usize, self.height as usize, &self.mvec_buf_y, &mut enc_blob_reader)?;
-            let enc_plane_u = Decoder::<TReader>::read_pplane_data(&mut self.block_buf_u, self.width as usize / 2, self.height as usize / 2, &self.mvec_buf_u, &mut enc_blob_reader)?;
-            let enc_plane_v = Decoder::<TReader>::read_pplane_data(&mut self.block_buf_v, self.width as usize / 2, self.height as usize / 2, &self.mvec_buf_v, &mut enc_blob_reader)?;
+            Decoder::<TReader>::read_pplane_data(&mut self.block_buf_y, self.width as usize, self.height as usize, &self.mvec_buf_y, &mut enc_blob_reader)?;
+            Decoder::<TReader>::read_pplane_data(&mut self.block_buf_u, self.width as usize / 2, self.height as usize / 2, &self.mvec_buf_u, &mut enc_blob_reader)?;
+            Decoder::<TReader>::read_pplane_data(&mut self.block_buf_v, self.width as usize / 2, self.height as usize / 2, &self.mvec_buf_v, &mut enc_blob_reader)?;
             
-            [(enc_plane_y, &self.block_buf_y, &mut self.cur_frame.plane_y, &mut self.dec_buf_y),
-                (enc_plane_u, &self.block_buf_u, &mut self.cur_frame.plane_u, &mut self.dec_buf_u),
-                (enc_plane_v, &self.block_buf_v, &mut self.cur_frame.plane_v, &mut self.dec_buf_v)]
+            [(&self.mvec_buf_y, &self.block_buf_y, &mut self.cur_frame.plane_y, &mut self.dec_buf_y),
+                (&self.mvec_buf_u, &self.block_buf_u, &mut self.cur_frame.plane_u, &mut self.dec_buf_u),
+                (&self.mvec_buf_v, &self.block_buf_v, &mut self.cur_frame.plane_v, &mut self.dec_buf_v)]
             .par_iter_mut().for_each(|x| {
-                ImageSlice::decode_delta_plane_2(&x.0, &x.1, x.3, x.2)
+                let blocks_wide = x.2.width / 16;
+                let blocks_high = x.2.height / 16;
+
+                ImageSlice::decode_delta_plane_2(blocks_wide, blocks_high, &x.0, x.1, x.3, x.2);
             });
         }
 
@@ -394,14 +404,14 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         Ok(audio)
     }
 
-    fn read_plane_data(reader: &mut TReader, enc_len: usize, dec_len: usize, tree: &HuffmanTree) -> Result<Vec<u8>, std::io::Error> {
-        let mut compressed_enc_blob = vec![0;enc_len];
-        reader.read_exact(&mut compressed_enc_blob)?;
+    fn read_plane_data(reader: &mut TReader, enc_len: usize, dec_len: usize, tree: &HuffmanTree, read_buf: &mut Vec<u8>, enc_data_buf: &mut Vec<u8>) -> Result<(), std::io::Error> {
+        read_buf.resize(enc_len, 0);
+        enc_data_buf.resize(dec_len, 0);
 
-        let mut compressed_enc_blob_cursor = Cursor::new(compressed_enc_blob);
+        reader.read_exact(read_buf)?;
+        let mut compressed_enc_blob_cursor = Cursor::new(read_buf);
 
-        let mut enc_data = vec![0;dec_len];
-        match tree.read(&mut compressed_enc_blob_cursor, &mut enc_data) {
+        match tree.read(&mut compressed_enc_blob_cursor, enc_data_buf) {
             Ok(_) => {}
             Err(e) => match e {
                 HuffmanError::DecodeError => { return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed decoding compressed data")) }
@@ -410,7 +420,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             }
         };
 
-        Ok(enc_data)
+        Ok(())
     }
 
     fn read_pplane_headers(mblock: &mut Vec<MotionVector>, width: usize, height: usize, reader: &mut TReader) -> Result<(), std::io::Error> {
@@ -434,7 +444,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         Ok(())
     }
 
-    fn read_pplane_data<R: Read + Seek>(mblock: &mut Vec<EncodedMacroBlock>, width: usize, height: usize, header: &[MotionVector], reader: &mut R) -> Result<EncodedPPlane, std::io::Error> {
+    fn read_pplane_data<R: Read + Seek>(mblock: &mut Vec<EncodedMacroBlock>, width: usize, height: usize, _header: &[MotionVector], reader: &mut R) -> Result<(), std::io::Error> {
         let pad_width: usize = width + (16 - (width % 16)) % 16;
         let pad_height = height + (16 - (height % 16)) % 16;
 
@@ -455,17 +465,10 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             }
         }
 
-        Ok(EncodedPPlane {
-            width: width,
-            height: height,
-            blocks_wide: blocks_wide,
-            blocks_high: blocks_high,
-            blocks: Vec::new(),
-            offset: header.to_vec()
-        })
+        Ok(())
     }
 
-    fn read_iplane_data<R: Read + Seek>(mblock: &mut Vec<EncodedMacroBlock>, width: usize, height: usize, reader: &mut R) -> Result<EncodedIPlane, std::io::Error> {
+    fn read_iplane_data<R: Read + Seek>(mblock: &mut Vec<EncodedMacroBlock>, width: usize, height: usize, reader: &mut R) -> Result<(), std::io::Error> {
         let pad_width: usize = width + (16 - (width % 16)) % 16;
         let pad_height = height + (16 - (height % 16)) % 16;
 
@@ -486,13 +489,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             }
         }
 
-        Ok(EncodedIPlane {
-            width: width,
-            height: height,
-            blocks_wide: blocks_wide,
-            blocks_high: blocks_high,
-            blocks: Vec::new()
-        })
+        Ok(())
     }
 
     fn runlength_decode(encoded: &[u8], into: &mut [u8]) {

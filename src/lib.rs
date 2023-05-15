@@ -11,7 +11,7 @@ mod huffman;
 mod tests {
     use std::{path::Path, fs::File, time::Instant, io::{Cursor, Read}, println, vec};
 
-    use crate::{dct::{DctMatrix8x8, Q_TABLE_INTRA, DctQuantizedMatrix8x8}, enc::Encoder, def::{VideoFrame, ImageSlice}, dec::Decoder, huffman::HuffmanTree, qoa::{EncodedAudioFrame, QOA_SLICE_LEN, LMS, QOA_LMS_LEN, QOA_DEQUANT_TABLE, qoa_lms_predict, qoa_div, QOA_QUANT_TABLE, QOA_FRAME_LEN}};
+    use crate::{dct::{DctMatrix8x8, Q_TABLE_INTRA}, enc::Encoder, def::{VideoFrame, ImageSlice}, dec::Decoder, huffman::HuffmanTree, qoa::{EncodedAudioFrame, QOA_SLICE_LEN, LMS, QOA_LMS_LEN, QOA_DEQUANT_TABLE, qoa_lms_predict, qoa_div, QOA_QUANT_TABLE, QOA_FRAME_LEN}};
     use image::{io::Reader as ImageReader, GrayImage, RgbImage};
     use wav::WAV_FORMAT_PCM;
 
