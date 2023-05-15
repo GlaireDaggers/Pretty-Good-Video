@@ -86,6 +86,28 @@ lazy_static! {
 
         table
     };
+
+    static ref INV_ZIGZAG_TABLE: [usize;64] = {
+        let mut table: [usize;64] = [0;64];
+        let mut idx = 0;
+
+        const N: i32 = 8;
+        for diag in 0..2*N {
+            let i_min = i32::max(0, diag - N + 1);
+            let i_max = i_min + i32::min(diag, 2 * (N - 1) - diag);
+
+            for i in i_min..i_max + 1 {
+                let row = if diag % 2 != 0 { i } else { diag - i };
+                let column = if diag % 2 != 0 { diag - i } else { i };
+                let srcidx = column + (row * N);
+
+                table[srcidx as usize] = idx;
+                idx += 1;
+            }
+        }
+
+        table
+    };
 }
 
 /// Represents an 8x8 row-order matrix of DCT coefficients
@@ -100,28 +122,6 @@ pub struct DctQuantizedMatrix8x8 {
     pub m: [u8;64]
 }
 
-impl DctQuantizedMatrix8x8 {
-    pub fn zigzag_scan(self: &DctQuantizedMatrix8x8) -> [u8;64] {
-        let mut result = [0;64];
-
-        for (srcidx, mapidx) in ZIGZAG_TABLE.iter().enumerate() {
-            result[srcidx] = self.m[*mapidx];
-        }
-
-        result
-    }
-
-    pub fn inv_zigzag_scan(src: &[u8;64]) -> DctQuantizedMatrix8x8 {
-        let mut result = DctQuantizedMatrix8x8 { m: [0;64] };
-
-        for (srcidx, mapidx) in ZIGZAG_TABLE.iter().enumerate() {
-            result.m[*mapidx] = src[srcidx];
-        }
-
-        result
-    }
-}
-
 impl DctMatrix8x8 {
     pub fn new() -> DctMatrix8x8 {
         DctMatrix8x8 { m: [0.0;64] }
@@ -131,8 +131,9 @@ impl DctMatrix8x8 {
         let mut result = DctMatrix8x8 { m: [0.0;64] };
         let max = (1 << (bits - 1)) as f32;
 
-        for (idx, c) in src.m.iter().enumerate() {
-            let n = *c as i8 as i32;
+        for idx in 0..64 {
+            let c = src.m[INV_ZIGZAG_TABLE[idx]];
+            let n = c as i8 as i32;
             let q = q_table[idx];
             let scale = (1024.0 / q) / max;
             let d = q * scale;
@@ -147,8 +148,8 @@ impl DctMatrix8x8 {
         let mut result = DctQuantizedMatrix8x8 { m: [0;64] };
         let max = (1 << (bits - 1)) as f32;
 
-        for (idx, c) in self.m.iter().enumerate() {
-            let n = *c;
+        for idx in 0..64 {
+            let n = self.m[ZIGZAG_TABLE[idx]];
             let q = q_table[idx];
             let scale = (1024.0 / q) / max;
             let d = q * scale;
@@ -232,7 +233,7 @@ impl DctMatrix8x8 {
         }
     }
 
-    fn fast_dct8_transform(vector: &mut [f32;8]) {
+    pub fn fast_dct8_transform(vector: &mut [f32;8]) {
         let v0 = vector[0] + vector[7];
         let v1 = vector[1] + vector[6];
         let v2 = vector[2] + vector[5];
@@ -278,7 +279,7 @@ impl DctMatrix8x8 {
         vector[7] = S_7 * v27;
     }
 
-    fn fast_dct8_inverse_transform(vector: &mut [f32;8]) {
+    pub fn fast_dct8_inverse_transform(vector: &mut [f32;8]) {
         let v15 = vector[0] * RS_0;
         let v26 = vector[1] * RS_1;
         let v21 = vector[2] * RS_2;

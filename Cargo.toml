@@ -1,6 +1,6 @@
 [package]
 name = "pgv_rs"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 description = "Library for working with PGV (a toy MPEG-like video codec)"
 license = "MIT"
@@ -19,6 +19,7 @@ image = "0.24.6"
 wav = "1.0.0"
 
 [dependencies]
+bumpalo = "3.12.2"
 byteorder = "1.4.3"
 lazy_static = "1.4.0"
 rayon = "1.7.0"

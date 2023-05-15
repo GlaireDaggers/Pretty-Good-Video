@@ -16,6 +16,21 @@ mod tests {
     use wav::WAV_FORMAT_PCM;
 
     #[test]
+    fn test_dct() {
+        let data = [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0];
+
+        let mut dct = data;
+        DctMatrix8x8::fast_dct8_transform(&mut dct);
+
+        println!("DCT: {:?}", dct);
+
+        let mut idct = dct;
+        DctMatrix8x8::fast_dct8_inverse_transform(&mut idct);
+
+        println!("IDCT: {:?}", idct);
+    }
+
+    #[test]
     fn test_huffman() {
         let data = [0, 1, 1, 5, 5, 5, 10, 10, 10, 10];
 
@@ -77,7 +92,7 @@ mod tests {
         }
     }
 
-    #[test]
+    /*#[test]
     fn test_zigzag_scan() {
         let mut test_matrix = DctQuantizedMatrix8x8 { m: [0;64] };
 
@@ -94,7 +109,7 @@ mod tests {
         let test_inv_zigzag = DctQuantizedMatrix8x8::inv_zigzag_scan(&test_zigzag);
         
         println!("INV ZIGZAG MATRIX: {:?}", test_inv_zigzag.m);
-    }
+    }*/
 
     fn encode_audio_frame(audio: &Vec<Vec<i16>>, lmses: &mut Vec<LMS>, sample_offset: usize, frame_len: usize) -> EncodedAudioFrame {
         let mut result = EncodedAudioFrame {

@@ -200,7 +200,7 @@ impl Encoder {
 
                 for block in blocks {
                     for subblock in block.subblocks {
-                        dct_coeffs.extend_from_slice(&subblock.zigzag_scan());
+                        dct_coeffs.extend_from_slice(&subblock.m);
                     }
                 }
 

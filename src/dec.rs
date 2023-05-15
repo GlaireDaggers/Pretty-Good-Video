@@ -1,7 +1,7 @@
 use std::io::{Read, Seek, Cursor};
 
 use byteorder::{ReadBytesExt, LittleEndian};
-use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::{ParallelIterator, IntoParallelRefMutIterator};
 
 use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedIPlane, EncodedMacroBlock, MotionVector, EncodedPPlane}, dct::DctQuantizedMatrix8x8, def::{VideoFrame, ImageSlice}, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
 use crate::huffman::*;
@@ -36,6 +36,9 @@ pub struct Decoder<TReader: Read + Seek> {
     mvec_buf_y: Vec<MotionVector>,
     mvec_buf_u: Vec<MotionVector>,
     mvec_buf_v: Vec<MotionVector>,
+    dec_buf_y: Vec<ImageSlice<u8>>,
+    dec_buf_u: Vec<ImageSlice<u8>>,
+    dec_buf_v: Vec<ImageSlice<u8>>,
 }
 
 #[derive(Debug)]
@@ -197,6 +200,9 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             mvec_buf_y: Vec::with_capacity((blocks_wide * blocks_high) as usize),
             mvec_buf_u: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
             mvec_buf_v: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
+            dec_buf_y: Vec::with_capacity((blocks_wide * blocks_high) as usize),
+            dec_buf_u: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
+            dec_buf_v: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
         })
     }
 
@@ -235,17 +241,12 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let enc_plane_u = Decoder::<TReader>::read_iplane_data(&mut self.block_buf_u, self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
             let enc_plane_v = Decoder::<TReader>::read_iplane_data(&mut self.block_buf_v, self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
 
-            let dec_planes: Vec<_> = [(enc_plane_y, &self.block_buf_y), (enc_plane_u, &self.block_buf_u), (enc_plane_v, &self.block_buf_v)].par_iter().map(|(plane, blockbuf)| {
-                ImageSlice::decode_plane_2(plane, &blockbuf)
-            }).collect();
-
-            let plane_y = &dec_planes[0];
-            let plane_u = &dec_planes[1];
-            let plane_v = &dec_planes[2];
-
-            self.cur_frame.plane_y.blit(plane_y, 0, 0, 0, 0, plane_y.width, plane_y.height);
-            self.cur_frame.plane_u.blit(plane_u, 0, 0, 0, 0, plane_u.width, plane_u.height);
-            self.cur_frame.plane_v.blit(plane_v, 0, 0, 0, 0, plane_v.width, plane_v.height);
+            [(enc_plane_y, &self.block_buf_y, &mut self.cur_frame.plane_y, &mut self.dec_buf_y),
+                (enc_plane_u, &self.block_buf_u, &mut self.cur_frame.plane_u, &mut self.dec_buf_u),
+                (enc_plane_v, &self.block_buf_v, &mut self.cur_frame.plane_v, &mut self.dec_buf_v)]
+            .par_iter_mut().for_each(|x| {
+                ImageSlice::decode_plane_2(&x.0, &x.1, x.3, x.2);
+            });
         } else {
             // decode p-frame
             // decode headers for each plane, then decode data for each plane
@@ -269,17 +270,12 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             let enc_plane_u = Decoder::<TReader>::read_pplane_data(&mut self.block_buf_u, self.width as usize / 2, self.height as usize / 2, &self.mvec_buf_u, &mut enc_blob_reader)?;
             let enc_plane_v = Decoder::<TReader>::read_pplane_data(&mut self.block_buf_v, self.width as usize / 2, self.height as usize / 2, &self.mvec_buf_v, &mut enc_blob_reader)?;
             
-            let dec_planes: Vec<_> = [(enc_plane_y, &self.block_buf_y, &self.cur_frame.plane_y), (enc_plane_u, &self.block_buf_u, &self.cur_frame.plane_u), (enc_plane_v, &self.block_buf_v, &self.cur_frame.plane_v)].par_iter().map(|x| {
-                ImageSlice::decode_delta_plane_2(&x.0, &x.1, x.2)
-            }).collect();
-
-            let plane_y = &dec_planes[0];
-            let plane_u = &dec_planes[1];
-            let plane_v = &dec_planes[2];
-
-            self.cur_frame.plane_y.blit(&plane_y, 0, 0, 0, 0, plane_y.width, plane_y.height);
-            self.cur_frame.plane_u.blit(&plane_u, 0, 0, 0, 0, plane_u.width, plane_u.height);
-            self.cur_frame.plane_v.blit(&plane_v, 0, 0, 0, 0, plane_v.width, plane_v.height);
+            [(enc_plane_y, &self.block_buf_y, &mut self.cur_frame.plane_y, &mut self.dec_buf_y),
+                (enc_plane_u, &self.block_buf_u, &mut self.cur_frame.plane_u, &mut self.dec_buf_u),
+                (enc_plane_v, &self.block_buf_v, &mut self.cur_frame.plane_v, &mut self.dec_buf_v)]
+            .par_iter_mut().for_each(|x| {
+                ImageSlice::decode_delta_plane_2(&x.0, &x.1, x.3, x.2)
+            });
         }
 
         self.video_pos = self.reader.stream_position()? as usize;
@@ -526,6 +522,6 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         reader.read_exact(&mut subblock_data)?;
 
         // inv zigzag scan to get final subblock data
-        Ok(DctQuantizedMatrix8x8::inv_zigzag_scan(&subblock_data))
+        Ok(DctQuantizedMatrix8x8 { m: subblock_data })
     }
 }
