@@ -34,7 +34,7 @@ impl<R: Read> BitReader<R> {
     }
 
     pub fn read_1(self: &mut BitReader<R>) -> Result<bool, std::io::Error> {
-        let buf_cursor = self.buf_pos / 8;
+        let buf_cursor = self.buf_pos >> 3; // / 8
 
         while self.buf.len() <= buf_cursor {
             self.buf.push(match self.reader.read_u8() {
@@ -50,7 +50,7 @@ impl<R: Read> BitReader<R> {
             });
         }
 
-        let bit_pos = self.buf_pos % 8;
+        let bit_pos = self.buf_pos & 0x7; // % 8
         let cur = self.buf[buf_cursor] & (1 << bit_pos) != 0;
 
         self.buf_pos += 1;
@@ -58,7 +58,7 @@ impl<R: Read> BitReader<R> {
     }
 
     pub fn read_8(self: &mut BitReader<R>) -> Result<u8, std::io::Error> {
-        let buf_cursor = self.buf_pos / 8;
+        let buf_cursor = self.buf_pos >> 3; // / 8
 
         while self.buf.len() <= buf_cursor + 1 {
             self.buf.push(match self.reader.read_u8() {
@@ -74,7 +74,7 @@ impl<R: Read> BitReader<R> {
             });
         }
 
-        let bit_pos = self.buf_pos % 8;
+        let bit_pos = self.buf_pos & 0x7; // % 8
         let cur = self.buf[buf_cursor] >> bit_pos |
             self.buf[buf_cursor + 1].checked_shl(8 - bit_pos as u32).unwrap_or(0);
 

@@ -4,7 +4,7 @@ pub const PGV_MAGIC: &[u8] = b"PGVIDEO\0";
 pub const PGV_VERSION: u32 = 100;
 pub const PGV_HEADERSIZE: u32 = 52;
 
-use crate::{dct::{DctQuantizedMatrix8x8, DctMatrix8x8, Q_TABLE_INTER, Q_TABLE_INTRA}, def::ImageSlice};
+use crate::{dct::{DctQuantizedMatrix8x8, DctMatrix8x8, Q_TABLE_INTRA_SCALED, Q_TABLE_INTER_SCALED}, def::ImageSlice};
 use rayon::prelude::*;
 
 #[derive(Clone, Copy)]
@@ -257,7 +257,7 @@ impl ImageSlice<u8> {
 
         // encode each macroblock in parallel
         let enc_result: Vec<_> = blocks.par_iter().map(|x| {
-            ImageSlice::encode_block(x, &Q_TABLE_INTRA)
+            ImageSlice::encode_block(x, &Q_TABLE_INTRA_SCALED)
         }).collect();
 
         EncodedIPlane { width: pad_width, height: pad_height, blocks_wide: blocks_wide, blocks_high: blocks_high, blocks: enc_result }
@@ -303,7 +303,7 @@ impl ImageSlice<u8> {
                 (by as i32 + block_vectors[idx].y as i32) as usize,
                 16, 16);
             let residual = ImageSlice::calc_residual(&prev_block, block);
-            ImageSlice::encode_block(&residual, &Q_TABLE_INTER)
+            ImageSlice::encode_block(&residual, &Q_TABLE_INTER_SCALED)
         }).collect();
 
         EncodedPPlane { width: from.width, height: from.height, blocks_wide: blocks_wide, blocks_high: blocks_high, blocks: enc_result, offset: block_vectors }
@@ -311,10 +311,10 @@ impl ImageSlice<u8> {
 
     fn decode_block(src: &EncodedMacroBlock) -> ImageSlice<u8> {
         let subblocks = [
-            ImageSlice::decode_subblock(&src.subblocks[0], &Q_TABLE_INTRA),
-            ImageSlice::decode_subblock(&src.subblocks[1], &Q_TABLE_INTRA),
-            ImageSlice::decode_subblock(&src.subblocks[2], &Q_TABLE_INTRA),
-            ImageSlice::decode_subblock(&src.subblocks[3], &Q_TABLE_INTRA)];
+            ImageSlice::decode_subblock(&src.subblocks[0], &Q_TABLE_INTRA_SCALED),
+            ImageSlice::decode_subblock(&src.subblocks[1], &Q_TABLE_INTRA_SCALED),
+            ImageSlice::decode_subblock(&src.subblocks[2], &Q_TABLE_INTRA_SCALED),
+            ImageSlice::decode_subblock(&src.subblocks[3], &Q_TABLE_INTRA_SCALED)];
 
         let mut block = ImageSlice::new(16, 16);
         block.blit(&subblocks[0], 0, 0, 0, 0, 8, 8);
@@ -327,10 +327,10 @@ impl ImageSlice<u8> {
 
     fn decode_delta_block(src: &EncodedMacroBlock, prev: &ImageSlice<u8>, into: &mut ImageSlice<u8>) {
         let subblocks = [
-            ImageSlice::decode_subblock(&src.subblocks[0], &Q_TABLE_INTER),
-            ImageSlice::decode_subblock(&src.subblocks[1], &Q_TABLE_INTER),
-            ImageSlice::decode_subblock(&src.subblocks[2], &Q_TABLE_INTER),
-            ImageSlice::decode_subblock(&src.subblocks[3], &Q_TABLE_INTER)];
+            ImageSlice::decode_subblock(&src.subblocks[0], &Q_TABLE_INTER_SCALED),
+            ImageSlice::decode_subblock(&src.subblocks[1], &Q_TABLE_INTER_SCALED),
+            ImageSlice::decode_subblock(&src.subblocks[2], &Q_TABLE_INTER_SCALED),
+            ImageSlice::decode_subblock(&src.subblocks[3], &Q_TABLE_INTER_SCALED)];
 
         let mut block = ImageSlice::new(16, 16);
         block.blit(&subblocks[0], 0, 0, 0, 0, 8, 8);
@@ -342,7 +342,7 @@ impl ImageSlice<u8> {
     }
 
     fn decode_subblock(src: &DctQuantizedMatrix8x8, q_table: &[f32;64]) -> ImageSlice<u8> {
-        let mut dct = DctMatrix8x8::decode(src, q_table, 8);
+        let mut dct = DctMatrix8x8::decode(src, q_table);
         dct.dct_inverse_transform_columns();
         dct.dct_inverse_transform_rows();
 
@@ -378,7 +378,7 @@ impl ImageSlice<u8> {
         dct.dct_transform_rows();
         dct.dct_transform_columns();
 
-        dct.encode(q_table, 8)
+        dct.encode(q_table)
     }
 
     fn match_block(src: &ImageSlice<u8>, block: &ImageSlice<u8>, bx: usize, by: usize) -> MotionVector {

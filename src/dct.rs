@@ -108,6 +108,9 @@ lazy_static! {
 
         table
     };
+
+    pub static ref Q_TABLE_INTER_SCALED: [f32;64] = DctMatrix8x8::transform_qtable(&Q_TABLE_INTER, 8);
+    pub static ref Q_TABLE_INTRA_SCALED: [f32;64] = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8);
 }
 
 /// Represents an 8x8 row-order matrix of DCT coefficients
@@ -127,16 +130,28 @@ impl DctMatrix8x8 {
         DctMatrix8x8 { m: [0.0;64] }
     }
 
-    pub fn decode(src: &DctQuantizedMatrix8x8, q_table: &[f32;64], bits: u32) -> DctMatrix8x8 {
-        let mut result = DctMatrix8x8 { m: [0.0;64] };
+    pub fn transform_qtable(q_table: &[f32;64], bits: u32) -> [f32;64] {
+        let mut result = [0.0;64];
         let max = (1 << (bits - 1)) as f32;
+
+        for idx in 0..64 {
+            let q = q_table[idx];
+            let scale = (1024.0 / q) / max;
+            let d = q * scale;
+
+            result[idx] = d;
+        }
+
+        result
+    }
+
+    pub fn decode(src: &DctQuantizedMatrix8x8, q_table: &[f32;64]) -> DctMatrix8x8 {
+        let mut result = DctMatrix8x8 { m: [0.0;64] };
 
         for idx in 0..64 {
             let c = src.m[INV_ZIGZAG_TABLE[idx]];
             let n = c as i8 as i32;
-            let q = q_table[idx];
-            let scale = (1024.0 / q) / max;
-            let d = q * scale;
+            let d = q_table[idx];
 
             result.m[idx] = (n as f32) * d;
         }
@@ -144,15 +159,12 @@ impl DctMatrix8x8 {
         result
     }
 
-    pub fn encode(self: &mut DctMatrix8x8, q_table: &[f32;64], bits: u32) -> DctQuantizedMatrix8x8 {
+    pub fn encode(self: &mut DctMatrix8x8, q_table: &[f32;64]) -> DctQuantizedMatrix8x8 {
         let mut result = DctQuantizedMatrix8x8 { m: [0;64] };
-        let max = (1 << (bits - 1)) as f32;
 
         for idx in 0..64 {
             let n = self.m[ZIGZAG_TABLE[idx]];
-            let q = q_table[idx];
-            let scale = (1024.0 / q) / max;
-            let d = q * scale;
+            let d = q_table[idx];
 
             result.m[idx] = (n / d) as i8 as u8;
         }

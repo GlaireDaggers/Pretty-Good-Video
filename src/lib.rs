@@ -11,7 +11,7 @@ mod huffman;
 mod tests {
     use std::{path::Path, fs::File, time::Instant, io::{Cursor, Read}, println, vec};
 
-    use crate::{dct::{DctMatrix8x8, Q_TABLE_INTRA}, enc::Encoder, def::{VideoFrame, ImageSlice}, dec::Decoder, huffman::HuffmanTree, qoa::{EncodedAudioFrame, QOA_SLICE_LEN, LMS, QOA_LMS_LEN, QOA_DEQUANT_TABLE, qoa_lms_predict, qoa_div, QOA_QUANT_TABLE, QOA_FRAME_LEN}};
+    use crate::{dct::{DctMatrix8x8, Q_TABLE_INTRA_SCALED}, enc::Encoder, def::{VideoFrame, ImageSlice}, dec::Decoder, huffman::HuffmanTree, qoa::{EncodedAudioFrame, QOA_SLICE_LEN, LMS, QOA_LMS_LEN, QOA_DEQUANT_TABLE, qoa_lms_predict, qoa_div, QOA_QUANT_TABLE, QOA_FRAME_LEN}};
     use image::{io::Reader as ImageReader, GrayImage, RgbImage};
     use wav::WAV_FORMAT_PCM;
 
@@ -504,8 +504,8 @@ mod tests {
                 dct.dct_transform_rows();
                 dct.dct_transform_columns();
 
-                let enc = dct.encode(&Q_TABLE_INTRA, 8);
-                dct = DctMatrix8x8::decode(&enc, &Q_TABLE_INTRA, 8);
+                let enc = dct.encode(&Q_TABLE_INTRA_SCALED);
+                dct = DctMatrix8x8::decode(&enc, &Q_TABLE_INTRA_SCALED);
 
                 dct.dct_inverse_transform_columns();
                 dct.dct_inverse_transform_rows();
