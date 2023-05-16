@@ -9,25 +9,65 @@ mod huffman;
 
 #[cfg(test)]
 mod tests {
-    use std::{path::Path, fs::File, time::Instant, io::{Cursor, Read}, println, vec};
+    use std::{path::Path, fs::File, time::Instant, io::{Cursor, Read}, println, vec, hint::black_box};
 
     use crate::{dct::{DctMatrix8x8, Q_TABLE_INTRA_SCALED}, enc::Encoder, def::{VideoFrame, ImageSlice}, dec::Decoder, huffman::HuffmanTree, qoa::{EncodedAudioFrame, QOA_SLICE_LEN, LMS, QOA_LMS_LEN, QOA_DEQUANT_TABLE, qoa_lms_predict, qoa_div, QOA_QUANT_TABLE, QOA_FRAME_LEN}};
     use image::{io::Reader as ImageReader, GrayImage, RgbImage};
+    use rand::Rng;
     use wav::WAV_FORMAT_PCM;
 
     #[test]
     fn test_dct() {
-        let data = [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0];
+        // assume 4k resolution, calculate how many luma vs chroma blocks there would be in a frame
+        const WIDTH_4K: i32 = 4096;
+        const HEIGHT_4K: i32 = 2160;
 
-        let mut dct = data;
-        DctMatrix8x8::fast_dct8_transform(&mut dct);
+        const CHROMA_WIDTH_4K: i32 = 2048;
+        const CHROMA_HEIGHT_4K: i32 = 1088;
 
-        println!("DCT: {:?}", dct);
+        const LUMA_BLOCKS_WIDE: i32 = WIDTH_4K / 16;
+        const LUMA_BLOCKS_HIGH: i32 = HEIGHT_4K / 16;
 
-        let mut idct = dct;
-        DctMatrix8x8::fast_dct8_inverse_transform(&mut idct);
+        const CHROMA_BLOCKS_WIDE: i32 = CHROMA_WIDTH_4K / 16;
+        const CHROMA_BLOCKS_HIGH: i32 = CHROMA_HEIGHT_4K / 16;
 
-        println!("IDCT: {:?}", idct);
+        const TOTAL_LUMA_BLOCKS: i32 = LUMA_BLOCKS_WIDE * LUMA_BLOCKS_HIGH;
+        const TOTAL_CHROMA_BLOCKS: i32 = CHROMA_BLOCKS_WIDE * CHROMA_BLOCKS_HIGH;
+
+        const TOTAL_BLOCKS: i32 = TOTAL_LUMA_BLOCKS + TOTAL_CHROMA_BLOCKS + TOTAL_CHROMA_BLOCKS;
+        
+        for run in 0..50 {
+            println!("RUN {}", run);
+
+            let mut enc_blocks = Vec::with_capacity(TOTAL_BLOCKS as usize);
+
+            for _ in 0..TOTAL_BLOCKS {
+                let mut matrix = DctMatrix8x8::new();
+                rand::thread_rng().fill(&mut matrix.m);
+
+                matrix.dct_transform_rows();
+                matrix.dct_transform_columns();
+
+                enc_blocks.push(matrix.encode(&Q_TABLE_INTRA_SCALED));
+                // enc_blocks.push(matrix);
+            }
+
+            let start = Instant::now();
+
+            for i in 0..TOTAL_BLOCKS {
+                let mut enc = DctMatrix8x8::decode(&enc_blocks[i as usize], &Q_TABLE_INTRA_SCALED);
+                // let mut enc = enc_blocks[i as usize];
+
+                enc.dct_inverse_transform_columns();
+                enc.dct_inverse_transform_rows();
+
+                black_box(enc);
+            }
+
+            let elapsed = start.elapsed().as_millis();
+
+            println!("\tDecoded {} blocks in {} ms", TOTAL_BLOCKS, elapsed);
+        }
     }
 
     #[test]

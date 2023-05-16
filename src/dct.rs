@@ -63,6 +63,11 @@ pub static Q_TABLE_INTER: [f32;64] = [
     16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0, 16.0,
 ];
 
+pub static INV_ZIGZAG_TABLE: [usize;64] = [
+    0, 1, 5, 6, 14, 15, 27, 28, 2, 4, 7, 13, 16, 26, 29, 42, 3, 8, 12, 17, 25, 30, 41, 43, 9, 11, 18, 24, 31, 40, 44, 53, 10, 19, 23, 32, 39, 45, 52, 54, 20, 22, 
+33, 38, 46, 51, 55, 60, 21, 34, 37, 47, 50, 56, 59, 61, 35, 36, 48, 49, 57, 58, 62, 63
+];
+
 lazy_static! {
     /// Index table for zig-zag scanning DCT matrix
     static ref ZIGZAG_TABLE: [usize;64] = {
@@ -87,7 +92,7 @@ lazy_static! {
         table
     };
 
-    static ref INV_ZIGZAG_TABLE: [usize;64] = {
+    /*static ref INV_ZIGZAG_TABLE: [usize;64] = {
         let mut table: [usize;64] = [0;64];
         let mut idx = 0;
 
@@ -106,8 +111,9 @@ lazy_static! {
             }
         }
 
+        println!("INV: {:?}", table);
         table
-    };
+    };*/
 
     pub static ref Q_TABLE_INTER_SCALED: [f32;64] = DctMatrix8x8::transform_qtable(&Q_TABLE_INTER, 8);
     pub static ref Q_TABLE_INTRA_SCALED: [f32;64] = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8);
@@ -148,12 +154,78 @@ impl DctMatrix8x8 {
     pub fn decode(src: &DctQuantizedMatrix8x8, q_table: &[f32;64]) -> DctMatrix8x8 {
         let mut result = DctMatrix8x8 { m: [0.0;64] };
 
-        for idx in 0..64 {
+        /*for idx in 0..64 {
             let c = src.m[INV_ZIGZAG_TABLE[idx]];
-            let n = c as i8 as i32;
+            let n = c as i8 as f32;
             let d = q_table[idx];
 
-            result.m[idx] = (n as f32) * d;
+            result.m[idx] = n * d;
+        }*/
+
+        // this looks really silly but appears to play nicer with vectorization (at least according to Godbolt)
+
+        for idx in 0..8 {
+            let c = src.m[INV_ZIGZAG_TABLE[idx]];
+            let n = c as i8 as f32;
+            let d = q_table[idx];
+
+            result.m[idx] = n * d;
+        }
+
+        for idx in 8..16 {
+            let c = src.m[INV_ZIGZAG_TABLE[idx]];
+            let n = c as i8 as f32;
+            let d = q_table[idx];
+
+            result.m[idx] = n * d;
+        }
+
+        for idx in 16..24 {
+            let c = src.m[INV_ZIGZAG_TABLE[idx]];
+            let n = c as i8 as f32;
+            let d = q_table[idx];
+
+            result.m[idx] = n * d;
+        }
+
+        for idx in 24..32 {
+            let c = src.m[INV_ZIGZAG_TABLE[idx]];
+            let n = c as i8 as f32;
+            let d = q_table[idx];
+
+            result.m[idx] = n * d;
+        }
+
+        for idx in 32..40 {
+            let c = src.m[INV_ZIGZAG_TABLE[idx]];
+            let n = c as i8 as f32;
+            let d = q_table[idx];
+
+            result.m[idx] = n * d;
+        }
+
+        for idx in 40..48 {
+            let c = src.m[INV_ZIGZAG_TABLE[idx]];
+            let n = c as i8 as f32;
+            let d = q_table[idx];
+
+            result.m[idx] = n * d;
+        }
+
+        for idx in 48..56 {
+            let c = src.m[INV_ZIGZAG_TABLE[idx]];
+            let n = c as i8 as f32;
+            let d = q_table[idx];
+
+            result.m[idx] = n * d;
+        }
+
+        for idx in 56..64 {
+            let c = src.m[INV_ZIGZAG_TABLE[idx]];
+            let n = c as i8 as f32;
+            let d = q_table[idx];
+
+            result.m[idx] = n * d;
         }
 
         result
