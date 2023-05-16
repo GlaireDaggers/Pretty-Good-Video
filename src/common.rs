@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 pub const PGV_MAGIC: &[u8] = b"PGVIDEO\0";
-pub const PGV_VERSION: u32 = 100;
+pub const PGV_VERSION: u32 = 101;
 pub const PGV_HEADERSIZE: u32 = 52;
 
 use crate::{dct::{DctQuantizedMatrix8x8, DctMatrix8x8, Q_TABLE_INTRA_SCALED, Q_TABLE_INTER_SCALED}, def::ImageSlice};
@@ -386,8 +386,8 @@ impl ImageSlice<u8> {
         let mut best_sx = 0;
         let mut best_sy = 0;
 
-        for iy in -16..16 {
-            for ix in -16..16 {
+        for iy in -8..7 {
+            for ix in -8..7 {
                 let src_x = bx as i32 + ix;
                 let src_y = by as i32 + iy;
 

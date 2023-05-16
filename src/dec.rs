@@ -70,7 +70,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         // read version
         let version = match reader.read_u32::<LittleEndian>() {
             Ok(ver) => {
-                if ver > PGV_VERSION {
+                if ver != PGV_VERSION {
                     return Err(DecodeError::VersionError);
                 }
 
@@ -434,8 +434,10 @@ impl<TReader: Read + Seek> Decoder<TReader> {
 
         for _ in 0..blocks_high {
             for _ in 0..blocks_wide {
-                let mx = reader.read_i8()?;
-                let my = reader.read_i8()?;
+                let packed = reader.read_u8()?;
+                
+                let mx = (packed << 4) as i8 >> 4;
+                let my = (packed & 0xF0) as i8 >> 4;
 
                 mblock.push(MotionVector{ x: mx, y: my });
             }

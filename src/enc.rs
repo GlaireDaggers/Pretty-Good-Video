@@ -279,8 +279,13 @@ impl Encoder {
     fn write_pplane_header<TWriter: Write>(writer: &mut TWriter, plane: &EncodedPPlane) -> Result<(), std::io::Error> {
         // write motion vectors for each block
         for vec in &plane.offset {
-            writer.write_i8(vec.x)?;
-            writer.write_i8(vec.y)?;
+            assert!(vec.x >= -8 && vec.x < 7);
+            assert!(vec.y >= -8 && vec.y < 7);
+
+            let lo = (vec.x & 0xF) as u8;
+            let hi = (vec.y & 0xF) as u8;
+
+            writer.write_u8(lo | (hi << 4))?;
         }
 
         Ok(())
