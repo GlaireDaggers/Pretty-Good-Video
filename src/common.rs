@@ -391,8 +391,10 @@ impl ImageSlice<u8> {
 
         let mut result = [0;64];
         
-        for (idx, px) in dct.m.iter().enumerate() {
-            result[idx] = (*px + 128.0).clamp(0.0, 255.0) as u8;
+        unsafe {
+            for (idx, px) in dct.m.iter().enumerate() {
+                result[idx] = (*px + 128.0).clamp(0.0, 255.0).to_int_unchecked::<u8>();
+            }
         }
 
         result

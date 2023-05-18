@@ -430,17 +430,19 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         let blocks_wide = pad_width / 16;
         let blocks_high = pad_height / 16;
 
-        mblock.clear();
+        let total_blocks = blocks_wide * blocks_high;
 
-        for _ in 0..blocks_high {
-            for _ in 0..blocks_wide {
-                let packed = reader.read_u8()?;
-                
-                let mx = (packed << 4) as i8 >> 4;
-                let my = (packed & 0xF0) as i8 >> 4;
+        unsafe {
+            mblock.set_len(total_blocks);
+        }
 
-                mblock.push(MotionVector{ x: mx, y: my });
-            }
+        for idx in 0..total_blocks {
+            let packed = reader.read_u8()?;
+            
+            let mx = (packed << 4) as i8 >> 4;
+            let my = (packed & 0xF0) as i8 >> 4;
+
+            mblock[idx] = MotionVector{ x: mx, y: my };
         }
 
         Ok(())
@@ -453,18 +455,20 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         let blocks_wide = pad_width / 16;
         let blocks_high = pad_height / 16;
 
-        mblock.clear();
+        let total_blocks = blocks_wide * blocks_high;
 
-        for _ in 0..blocks_high {
-            for _ in 0..blocks_wide {
-                // decode each subblock
-                let subblock_0 = Decoder::<TReader>::decode_subblock(reader)?;
-                let subblock_1 = Decoder::<TReader>::decode_subblock(reader)?;
-                let subblock_2 = Decoder::<TReader>::decode_subblock(reader)?;
-                let subblock_3 = Decoder::<TReader>::decode_subblock(reader)?;
+        unsafe {
+            mblock.set_len(total_blocks);
+        }
 
-                mblock.push(EncodedMacroBlock { subblocks: [subblock_0, subblock_1, subblock_2, subblock_3] });
-            }
+        for idx in 0..total_blocks {
+            // decode each subblock
+            let subblock_0 = Decoder::<TReader>::decode_subblock(reader)?;
+            let subblock_1 = Decoder::<TReader>::decode_subblock(reader)?;
+            let subblock_2 = Decoder::<TReader>::decode_subblock(reader)?;
+            let subblock_3 = Decoder::<TReader>::decode_subblock(reader)?;
+
+            mblock[idx] = EncodedMacroBlock { subblocks: [subblock_0, subblock_1, subblock_2, subblock_3] };
         }
 
         Ok(())
@@ -477,18 +481,20 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         let blocks_wide = pad_width / 16;
         let blocks_high = pad_height / 16;
 
-        mblock.clear();
+        let total_blocks = blocks_wide * blocks_high;
 
-        for _ in 0..blocks_high {
-            for _ in 0..blocks_wide {
-                // decode each subblock
-                let subblock_0 = Decoder::<TReader>::decode_subblock(reader)?;
-                let subblock_1 = Decoder::<TReader>::decode_subblock(reader)?;
-                let subblock_2 = Decoder::<TReader>::decode_subblock(reader)?;
-                let subblock_3 = Decoder::<TReader>::decode_subblock(reader)?;
+        unsafe {
+            mblock.set_len(total_blocks);
+        }
 
-                mblock.push(EncodedMacroBlock { subblocks: [subblock_0, subblock_1, subblock_2, subblock_3] });
-            }
+        for idx in 0..total_blocks {
+            // decode each subblock
+            let subblock_0 = Decoder::<TReader>::decode_subblock(reader)?;
+            let subblock_1 = Decoder::<TReader>::decode_subblock(reader)?;
+            let subblock_2 = Decoder::<TReader>::decode_subblock(reader)?;
+            let subblock_3 = Decoder::<TReader>::decode_subblock(reader)?;
+
+            mblock[idx] = EncodedMacroBlock { subblocks: [subblock_0, subblock_1, subblock_2, subblock_3] };
         }
 
         Ok(())
