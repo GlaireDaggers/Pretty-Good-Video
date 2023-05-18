@@ -3,7 +3,7 @@ use std::io::{Read, Seek, Cursor};
 use byteorder::{ReadBytesExt, LittleEndian};
 use rayon::prelude::{ParallelIterator, IntoParallelRefMutIterator};
 
-use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedMacroBlock, MotionVector}, dct::DctQuantizedMatrix8x8, def::{VideoFrame, ImageSlice}, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
+use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedMacroBlock, MotionVector, MacroBlock}, dct::DctQuantizedMatrix8x8, def::{VideoFrame, ImageSlice}, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
 use crate::huffman::*;
 
 pub struct Decoder<TReader: Read + Seek> {
@@ -36,9 +36,9 @@ pub struct Decoder<TReader: Read + Seek> {
     mvec_buf_y: Vec<MotionVector>,
     mvec_buf_u: Vec<MotionVector>,
     mvec_buf_v: Vec<MotionVector>,
-    dec_buf_y: Vec<ImageSlice<u8>>,
-    dec_buf_u: Vec<ImageSlice<u8>>,
-    dec_buf_v: Vec<ImageSlice<u8>>,
+    dec_buf_y: Vec<MacroBlock>,
+    dec_buf_u: Vec<MacroBlock>,
+    dec_buf_v: Vec<MacroBlock>,
     enc_buf: Vec<u8>,
     dec_buf: Vec<u8>,
 }
