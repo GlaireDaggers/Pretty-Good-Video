@@ -11,7 +11,7 @@ mod huffman;
 mod tests {
     use std::{path::Path, fs::File, time::Instant, io::{Cursor, Read}, println, vec, hint::black_box};
 
-    use crate::{dct::{DctMatrix8x8, Q_TABLE_INTRA_SCALED}, enc::Encoder, def::{VideoFrame, ImageSlice}, dec::Decoder, huffman::HuffmanTree, qoa::{EncodedAudioFrame, QOA_SLICE_LEN, LMS, QOA_LMS_LEN, QOA_DEQUANT_TABLE, qoa_lms_predict, qoa_div, QOA_QUANT_TABLE, QOA_FRAME_LEN}};
+    use crate::{dct::{DctMatrix8x8, Q_TABLE_INTRA}, enc::Encoder, def::{VideoFrame, ImageSlice}, dec::Decoder, huffman::HuffmanTree, qoa::{EncodedAudioFrame, QOA_SLICE_LEN, LMS, QOA_LMS_LEN, QOA_DEQUANT_TABLE, qoa_lms_predict, qoa_div, QOA_QUANT_TABLE, QOA_FRAME_LEN}};
     use image::{io::Reader as ImageReader, GrayImage, RgbImage};
     use rand::Rng;
     use wav::WAV_FORMAT_PCM;
@@ -41,6 +41,8 @@ mod tests {
 
             let mut enc_blocks = Vec::with_capacity(TOTAL_BLOCKS as usize);
 
+            let qtable = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8, 1);
+
             for _ in 0..TOTAL_BLOCKS {
                 let mut matrix = DctMatrix8x8::new();
                 rand::thread_rng().fill(&mut matrix.m);
@@ -48,14 +50,14 @@ mod tests {
                 matrix.dct_transform_rows();
                 matrix.dct_transform_columns();
 
-                enc_blocks.push(matrix.encode(&Q_TABLE_INTRA_SCALED));
+                enc_blocks.push(matrix.encode(&qtable));
                 // enc_blocks.push(matrix);
             }
 
             let start = Instant::now();
 
             for i in 0..TOTAL_BLOCKS {
-                let mut enc = DctMatrix8x8::decode(&enc_blocks[i as usize], &Q_TABLE_INTRA_SCALED);
+                let mut enc = DctMatrix8x8::decode(&enc_blocks[i as usize], &qtable);
                 // let mut enc = enc_blocks[i as usize];
 
                 enc.dct_inverse_transform_columns();
@@ -271,7 +273,7 @@ mod tests {
         output
     }
 
-    fn decode_audio_frame(channels: usize, frame: &EncodedAudioFrame) -> Vec<Vec<i16>> {
+    /*fn decode_audio_frame(channels: usize, frame: &EncodedAudioFrame) -> Vec<Vec<i16>> {
         // read number of samples per channel in this frame & number of slices
         let samples = frame.samples as i32;
         let slice_count = frame.slices.len() as i32;
@@ -309,7 +311,7 @@ mod tests {
         }
 
         audio
-    }
+    }*/
 
     #[test]
     fn test_audio() {
@@ -358,7 +360,7 @@ mod tests {
         let mut inp_audio_file = File::open("test_audio.wav").unwrap();
         let (audio_header, audio_data) = wav::read(&mut inp_audio_file).unwrap();
 
-        let mut encoder = Encoder::new(512, 384, 24, audio_header.sampling_rate, audio_header.channel_count as u32);
+        let mut encoder = Encoder::new(512, 384, 24, 0, audio_header.sampling_rate, audio_header.channel_count as u32);
 
         for frame_id in 1..163 {
             let frame_path = format!("test_frames/{:0>3}.png", frame_id);
@@ -414,7 +416,7 @@ mod tests {
 
     #[test]
     fn test_encoder_2() {
-        let mut encoder = Encoder::new(1280, 720, 30, 48000, 2);
+        let mut encoder = Encoder::new(1280, 720, 30, 1, 48000, 2);
 
         for frame_id in 1..100 {
             let frame_path = format!("test_frames_2/{:0>3}.png", frame_id);
@@ -521,8 +523,9 @@ mod tests {
     #[test]
     fn test_encode_iplane() {
         let frame = load_greyscale_plane("test1.png");
-        let encoded_plane = frame.encode_plane();
-        let decoded_plane = ImageSlice::decode_plane(&encoded_plane);
+        let qtable = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8, 1);
+        let encoded_plane = frame.encode_plane(&qtable);
+        let decoded_plane = ImageSlice::decode_plane(&encoded_plane, &qtable);
         save_greyscale_plane("test1_enc.png", &decoded_plane);
     }
 
@@ -534,6 +537,8 @@ mod tests {
         let cells_w = frame.width / 8;
         let cells_h = frame.height / 8;
 
+        let qtable = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8, 1);
+
         for j in 0..cells_h {
             for i in 0..cells_w {
                 let mut cell = frame.get_slice(i * 8, j * 8, 8, 8);
@@ -544,8 +549,8 @@ mod tests {
                 dct.dct_transform_rows();
                 dct.dct_transform_columns();
 
-                let enc = dct.encode(&Q_TABLE_INTRA_SCALED);
-                dct = DctMatrix8x8::decode(&enc, &Q_TABLE_INTRA_SCALED);
+                let enc = dct.encode(&qtable);
+                dct = DctMatrix8x8::decode(&enc, &qtable);
 
                 dct.dct_inverse_transform_columns();
                 dct.dct_inverse_transform_rows();

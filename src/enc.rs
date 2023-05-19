@@ -2,6 +2,7 @@ use std::io::{Write, Cursor};
 use std::iter::zip;
 
 use crate::common::{PGV_MAGIC, PGV_VERSION, PGV_HEADERSIZE};
+use crate::dct::{DctMatrix8x8, Q_TABLE_INTER, Q_TABLE_INTRA};
 use crate::qoa::{EncodedAudioFrame, QOA_LMS_LEN, QOA_SLICE_LEN, QOA_FRAME_LEN, LMS, QOA_DEQUANT_TABLE, qoa_lms_predict, qoa_div, QOA_QUANT_TABLE};
 use crate::{common::{EncodedFrame, EncodedIFrame, EncodedPFrame, EncodedPPlane}, def::{VideoFrame, ImageSlice}};
 use byteorder::{self, WriteBytesExt, LittleEndian};
@@ -16,14 +17,21 @@ pub struct Encoder {
     prev_frame: VideoFrame,
     frames: Vec<EncodedFrame>,
     audio: Vec<EncodedAudioFrame>,
+    qtable_inter: [f32;64],
+    qtable_intra: [f32;64],
+    qscale: i32,
 }
 
 impl Encoder {
-    pub fn new(width: usize, height: usize, framerate: u32, audio_samplerate: u32, audio_channels: u32) -> Encoder {
+    pub fn new(width: usize, height: usize, framerate: u32, qscale: i32, audio_samplerate: u32, audio_channels: u32) -> Encoder {
         assert!(width % 2 == 0 && height % 2 == 0);
+        assert!(qscale >= 0 && qscale <= 8);
 
         Encoder { width: width, height: height, framerate: framerate, audio_samplerate: audio_samplerate, audio_channels: audio_channels,
-            frames: Vec::new(), audio: Vec::new(), prev_frame: VideoFrame::new_padded(width, height) }
+            frames: Vec::new(), audio: Vec::new(), prev_frame: VideoFrame::new_padded(width, height),
+            qtable_inter: DctMatrix8x8::transform_qtable(&Q_TABLE_INTER, 8, qscale),
+            qtable_intra: DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8, qscale),
+            qscale: qscale }
     }
 
     pub fn write<TWriter: Write>(self: &Encoder, writer: &mut TWriter) -> Result<(), std::io::Error> {
@@ -104,14 +112,14 @@ impl Encoder {
         assert!(frame.plane_u.width == frame.width / 2 && frame.plane_u.height == frame.height / 2);
         assert!(frame.plane_v.width == frame.width / 2 && frame.plane_v.height == frame.height / 2);
 
-        let enc_y = frame.plane_y.encode_plane();
-        let dec_y = ImageSlice::decode_plane(&enc_y);
+        let enc_y = frame.plane_y.encode_plane(&self.qtable_intra);
+        let dec_y = ImageSlice::decode_plane(&enc_y, &self.qtable_intra);
 
-        let enc_u = frame.plane_u.encode_plane();
-        let dec_u = ImageSlice::decode_plane(&enc_u);
+        let enc_u = frame.plane_u.encode_plane(&self.qtable_intra);
+        let dec_u = ImageSlice::decode_plane(&enc_u, &self.qtable_intra);
 
-        let enc_v = frame.plane_v.encode_plane();
-        let dec_v = ImageSlice::decode_plane(&enc_v);
+        let enc_v = frame.plane_v.encode_plane(&self.qtable_intra);
+        let dec_v = ImageSlice::decode_plane(&enc_v, &self.qtable_intra);
 
         self.frames.push(EncodedFrame::IFrame(EncodedIFrame { y: enc_y, u: enc_u, v: enc_v } ));
 
@@ -128,14 +136,14 @@ impl Encoder {
         frame_copy.plane_u.blit(&frame.plane_u, 0, 0, 0, 0, frame.plane_u.width, frame.plane_u.height);
         frame_copy.plane_v.blit(&frame.plane_v, 0, 0, 0, 0, frame.plane_v.width, frame.plane_v.height);
 
-        let enc_y = ImageSlice::encode_delta_plane(&self.prev_frame.plane_y, &frame_copy.plane_y);
-        let dec_y = ImageSlice::decode_delta_plane(&enc_y, &self.prev_frame.plane_y);
+        let enc_y = ImageSlice::encode_delta_plane(&self.prev_frame.plane_y, &frame_copy.plane_y, &self.qtable_inter);
+        let dec_y = ImageSlice::decode_delta_plane(&enc_y, &self.prev_frame.plane_y, &self.qtable_inter);
 
-        let enc_u = ImageSlice::encode_delta_plane(&self.prev_frame.plane_u, &frame_copy.plane_u);
-        let dec_u = ImageSlice::decode_delta_plane(&enc_u, &self.prev_frame.plane_u);
+        let enc_u = ImageSlice::encode_delta_plane(&self.prev_frame.plane_u, &frame_copy.plane_u, &self.qtable_inter);
+        let dec_u = ImageSlice::decode_delta_plane(&enc_u, &self.prev_frame.plane_u, &self.qtable_inter);
 
-        let enc_v = ImageSlice::encode_delta_plane(&self.prev_frame.plane_v, &frame_copy.plane_v);
-        let dec_v = ImageSlice::decode_delta_plane(&enc_v, &self.prev_frame.plane_v);
+        let enc_v = ImageSlice::encode_delta_plane(&self.prev_frame.plane_v, &frame_copy.plane_v, &self.qtable_inter);
+        let dec_v = ImageSlice::decode_delta_plane(&enc_v, &self.prev_frame.plane_v, &self.qtable_inter);
 
         self.frames.push(EncodedFrame::PFrame(EncodedPFrame { y: enc_y, u: enc_u, v: enc_v } ));
 
@@ -222,7 +230,8 @@ impl Encoder {
             let tree = HuffmanTree::from_data(&enc_data);
             let table = tree.get_table();
 
-            // write frame group header (size, huffman tree)
+            // write frame group header (qscale, size, huffman tree)
+            writer.write_i32::<LittleEndian>(self.qscale)?;
             writer.write_u32::<LittleEndian>(group.len() as u32)?;
             writer.write_all(table)?;
 

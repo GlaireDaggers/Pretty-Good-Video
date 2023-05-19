@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
 pub const PGV_MAGIC: &[u8] = b"PGVIDEO\0";
-pub const PGV_VERSION: u32 = 101;
+pub const PGV_VERSION: u32 = 102;
 pub const PGV_HEADERSIZE: u32 = 52;
 
-use crate::{dct::{DctQuantizedMatrix8x8, DctMatrix8x8, Q_TABLE_INTRA_SCALED, Q_TABLE_INTER_SCALED}, def::ImageSlice};
+use crate::{dct::{DctQuantizedMatrix8x8, DctMatrix8x8}, def::ImageSlice};
 use rayon::prelude::*;
 
 
@@ -188,15 +188,12 @@ impl ImageSlice<u8> {
         }
     }
 
-    pub fn decode_plane(src: &EncodedIPlane) -> ImageSlice<u8> {
+    pub fn decode_plane(src: &EncodedIPlane, q_table: &[f32;64]) -> ImageSlice<u8> {
         let mut plane = ImageSlice::new(src.blocks_wide * 16, src.blocks_high * 16);
 
         let total_blocks = src.blocks_wide * src.blocks_high;
         let results: Vec<_> = (0..total_blocks).into_par_iter().map(|x| {
-            let block_x = x % src.blocks_wide;
-            let block_y = x / src.blocks_wide;
-
-            ImageSlice::decode_block(&src.blocks[block_x + (block_y * src.blocks_wide)])
+            ImageSlice::decode_block(&src.blocks[x], q_table)
         }).collect();
 
         for block_y in 0..src.blocks_high {
@@ -209,13 +206,10 @@ impl ImageSlice<u8> {
         plane
     }
 
-    pub fn decode_plane_2(blocks_wide: usize, blocks_high: usize, blockbuf: &Vec<EncodedMacroBlock>, resultbuf: &mut Vec<MacroBlock>, cur_plane: &mut ImageSlice<u8>) {
+    pub fn decode_plane_2(blocks_wide: usize, blocks_high: usize, blockbuf: &Vec<EncodedMacroBlock>, resultbuf: &mut Vec<MacroBlock>, cur_plane: &mut ImageSlice<u8>, q_table: &[f32;64]) {
         let total_blocks = blocks_wide * blocks_high;
         (0..total_blocks).into_par_iter().map(|x| {
-            let block_x = x % blocks_wide;
-            let block_y = x / blocks_wide;
-
-            ImageSlice::decode_block(&blockbuf[block_x + (block_y * blocks_wide)])
+            ImageSlice::decode_block(&blockbuf[x], q_table)
         }).collect_into_vec(resultbuf);
 
         for block_y in 0..blocks_high {
@@ -226,7 +220,7 @@ impl ImageSlice<u8> {
         }
     }
 
-    pub fn decode_delta_plane(src: &EncodedPPlane, prev: &ImageSlice<u8>) -> ImageSlice<u8> {
+    pub fn decode_delta_plane(src: &EncodedPPlane, prev: &ImageSlice<u8>, q_table: &[f32;64]) -> ImageSlice<u8> {
         let mut plane = ImageSlice::new(src.blocks_wide * 16, src.blocks_high * 16);
 
         let total_blocks = src.blocks_wide * src.blocks_high;
@@ -234,12 +228,13 @@ impl ImageSlice<u8> {
             let block_x = x % src.blocks_wide;
             let block_y = x / src.blocks_wide;
 
-            let motion = src.offset[block_x + (block_y * src.blocks_wide)];
+            let motion = src.offset[x];
             let px = (((block_x * 16) as i32) + (motion.x as i32)) as usize;
             let py = (((block_y * 16) as i32) + (motion.y as i32)) as usize;
             let prev_block = prev.get_block(px, py);
             let mut new_block = MacroBlock::new();
-            ImageSlice::decode_delta_block(&src.blocks[block_x + (block_y * src.blocks_wide)], &prev_block, &mut new_block);
+
+            ImageSlice::decode_delta_block(&src.blocks[x], &prev_block, &mut new_block, q_table);
 
             new_block
         }).collect();
@@ -254,18 +249,19 @@ impl ImageSlice<u8> {
         plane
     }
 
-    pub fn decode_delta_plane_2(blocks_wide: usize, blocks_high: usize, mvec: &Vec<MotionVector>, blockbuf: &Vec<EncodedMacroBlock>, resultbuf: &mut Vec<MacroBlock>, cur_plane: &mut ImageSlice<u8>) {
+    pub fn decode_delta_plane_2(blocks_wide: usize, blocks_high: usize, mvec: &Vec<MotionVector>, blockbuf: &Vec<EncodedMacroBlock>, resultbuf: &mut Vec<MacroBlock>, cur_plane: &mut ImageSlice<u8>, q_table: &[f32;64]) {
         let total_blocks = blocks_wide * blocks_high;
         (0..total_blocks).into_par_iter().map(|x| {
             let block_x = x % blocks_wide;
             let block_y = x / blocks_wide;
 
-            let motion = mvec[block_x + (block_y * blocks_wide)];
+            let motion = mvec[x];
             let px = (((block_x * 16) as i32) + (motion.x as i32)) as usize;
             let py = (((block_y * 16) as i32) + (motion.y as i32)) as usize;
             let prev_block = cur_plane.get_block(px, py);
             let mut new_block = MacroBlock::new();
-            ImageSlice::decode_delta_block(&blockbuf[block_x + (block_y * blocks_wide)], &prev_block, &mut new_block);
+
+            ImageSlice::decode_delta_block(&blockbuf[x], &prev_block, &mut new_block, q_table);
 
             new_block
         }).collect_into_vec(resultbuf);
@@ -278,7 +274,7 @@ impl ImageSlice<u8> {
         }
     }
 
-    pub fn encode_plane(self: &ImageSlice<u8>) -> EncodedIPlane {
+    pub fn encode_plane(self: &ImageSlice<u8>, q_table: &[f32;64]) -> EncodedIPlane {
         let pad_width: usize = self.width + (16 - (self.width % 16)) % 16;
         let pad_height = self.height + (16 - (self.height % 16)) % 16;
         let mut img_copy = ImageSlice::new(pad_width, pad_height);
@@ -300,13 +296,13 @@ impl ImageSlice<u8> {
 
         // encode each macroblock in parallel
         let enc_result: Vec<_> = blocks.par_iter().map(|x| {
-            ImageSlice::encode_block(x, &Q_TABLE_INTRA_SCALED)
+            ImageSlice::encode_block(x, q_table)
         }).collect();
 
         EncodedIPlane { width: pad_width, height: pad_height, blocks_wide: blocks_wide, blocks_high: blocks_high, blocks: enc_result }
     }
 
-    pub fn encode_delta_plane(from: &ImageSlice<u8>, to: &ImageSlice<u8>) -> EncodedPPlane {
+    pub fn encode_delta_plane(from: &ImageSlice<u8>, to: &ImageSlice<u8>, q_table: &[f32;64]) -> EncodedPPlane {
         assert!(to.width == from.width && to.height == from.height);
 
         let pad_width: usize = to.width + (16 - (to.width % 16)) % 16;
@@ -346,18 +342,18 @@ impl ImageSlice<u8> {
                 (by as i32 + block_vectors[idx].y as i32) as usize,
                 16, 16);
             let residual = ImageSlice::calc_residual(&prev_block, block);
-            ImageSlice::encode_block(&residual, &Q_TABLE_INTER_SCALED)
+            ImageSlice::encode_block(&residual, q_table)
         }).collect();
 
         EncodedPPlane { width: from.width, height: from.height, blocks_wide: blocks_wide, blocks_high: blocks_high, blocks: enc_result, offset: block_vectors }
     }
 
-    fn decode_block(src: &EncodedMacroBlock) -> MacroBlock {
+    fn decode_block(src: &EncodedMacroBlock, q_table: &[f32;64]) -> MacroBlock {
         let subblocks = [
-            ImageSlice::decode_subblock(&src.subblocks[0], &Q_TABLE_INTRA_SCALED),
-            ImageSlice::decode_subblock(&src.subblocks[1], &Q_TABLE_INTRA_SCALED),
-            ImageSlice::decode_subblock(&src.subblocks[2], &Q_TABLE_INTRA_SCALED),
-            ImageSlice::decode_subblock(&src.subblocks[3], &Q_TABLE_INTRA_SCALED)];
+            ImageSlice::decode_subblock(&src.subblocks[0], q_table),
+            ImageSlice::decode_subblock(&src.subblocks[1], q_table),
+            ImageSlice::decode_subblock(&src.subblocks[2], q_table),
+            ImageSlice::decode_subblock(&src.subblocks[3], q_table)];
 
         let mut block = MacroBlock::new();
         block.blit_subblock(&subblocks[0], 0, 0);
@@ -368,12 +364,12 @@ impl ImageSlice<u8> {
         block
     }
 
-    fn decode_delta_block(src: &EncodedMacroBlock, prev: &MacroBlock, into: &mut MacroBlock) {
+    fn decode_delta_block(src: &EncodedMacroBlock, prev: &MacroBlock, into: &mut MacroBlock, q_table: &[f32;64]) {
         let subblocks = [
-            ImageSlice::decode_subblock(&src.subblocks[0], &Q_TABLE_INTER_SCALED),
-            ImageSlice::decode_subblock(&src.subblocks[1], &Q_TABLE_INTER_SCALED),
-            ImageSlice::decode_subblock(&src.subblocks[2], &Q_TABLE_INTER_SCALED),
-            ImageSlice::decode_subblock(&src.subblocks[3], &Q_TABLE_INTER_SCALED)];
+            ImageSlice::decode_subblock(&src.subblocks[0], q_table),
+            ImageSlice::decode_subblock(&src.subblocks[1], q_table),
+            ImageSlice::decode_subblock(&src.subblocks[2], q_table),
+            ImageSlice::decode_subblock(&src.subblocks[3], q_table)];
 
         let mut block = MacroBlock::new();
         block.blit_subblock(&subblocks[0], 0, 0);

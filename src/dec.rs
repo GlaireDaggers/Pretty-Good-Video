@@ -3,7 +3,7 @@ use std::io::{Read, Seek, Cursor};
 use byteorder::{ReadBytesExt, LittleEndian};
 use rayon::prelude::{ParallelIterator, IntoParallelRefMutIterator};
 
-use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedMacroBlock, MotionVector, MacroBlock}, dct::DctQuantizedMatrix8x8, def::{VideoFrame, ImageSlice}, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
+use crate::{common::{PGV_MAGIC, PGV_VERSION, EncodedMacroBlock, MotionVector, MacroBlock}, dct::{DctQuantizedMatrix8x8, DctMatrix8x8, Q_TABLE_INTER, Q_TABLE_INTRA}, def::{VideoFrame, ImageSlice}, qoa::{QOA_LMS_LEN, LMS, QOA_SLICE_LEN, qoa_lms_predict, QOA_DEQUANT_TABLE}};
 use crate::huffman::*;
 
 pub struct Decoder<TReader: Read + Seek> {
@@ -41,6 +41,8 @@ pub struct Decoder<TReader: Read + Seek> {
     dec_buf_v: Vec<MacroBlock>,
     enc_buf: Vec<u8>,
     dec_buf: Vec<u8>,
+    qtable_inter: [f32;64],
+    qtable_intra: [f32;64],
 }
 
 #[derive(Debug)]
@@ -207,6 +209,8 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             dec_buf_v: Vec::with_capacity((chroma_blocks_wide * chroma_blocks_high) as usize),
             enc_buf: Vec::new(),
             dec_buf: Vec::new(),
+            qtable_inter: [0.0;64],
+            qtable_intra: [0.0;64],
         })
     }
 
@@ -222,7 +226,13 @@ impl<TReader: Read + Seek> Decoder<TReader> {
 
         if self.pic_in_gop == 0 {
             // read in new frame group header
+            let qscale = self.reader.read_i32::<LittleEndian>()?;
             self.pic_in_gop = self.reader.read_u32::<LittleEndian>()? as usize;
+
+            assert!(qscale >= 0 && qscale <= 8);
+
+            self.qtable_inter = DctMatrix8x8::transform_qtable(&Q_TABLE_INTER, 8, qscale);
+            self.qtable_intra = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8, qscale);
 
             let mut huffman_table = [0;256];
             self.reader.read_exact(&mut huffman_table)?;
@@ -245,6 +255,8 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             Decoder::<TReader>::read_iplane_data(&mut self.block_buf_u, self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
             Decoder::<TReader>::read_iplane_data(&mut self.block_buf_v, self.width as usize / 2, self.height as usize / 2, &mut enc_blob_reader)?;
 
+            let qtable = self.qtable_intra;
+
             [(&self.block_buf_y, &mut self.cur_frame.plane_y, &mut self.dec_buf_y),
                 (&self.block_buf_u, &mut self.cur_frame.plane_u, &mut self.dec_buf_u),
                 (&self.block_buf_v, &mut self.cur_frame.plane_v, &mut self.dec_buf_v)]
@@ -252,7 +264,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
                 let blocks_wide = x.1.width / 16;
                 let blocks_high = x.1.height / 16;
 
-                ImageSlice::decode_plane_2(blocks_wide, blocks_high, &x.0, x.2, x.1);
+                ImageSlice::decode_plane_2(blocks_wide, blocks_high, &x.0, x.2, x.1, &qtable);
             });
         } else {
             // decode p-frame
@@ -277,6 +289,8 @@ impl<TReader: Read + Seek> Decoder<TReader> {
             Decoder::<TReader>::read_pplane_data(&mut self.block_buf_u, self.width as usize / 2, self.height as usize / 2, &self.mvec_buf_u, &mut enc_blob_reader)?;
             Decoder::<TReader>::read_pplane_data(&mut self.block_buf_v, self.width as usize / 2, self.height as usize / 2, &self.mvec_buf_v, &mut enc_blob_reader)?;
             
+            let qtable = self.qtable_inter;
+
             [(&self.mvec_buf_y, &self.block_buf_y, &mut self.cur_frame.plane_y, &mut self.dec_buf_y),
                 (&self.mvec_buf_u, &self.block_buf_u, &mut self.cur_frame.plane_u, &mut self.dec_buf_u),
                 (&self.mvec_buf_v, &self.block_buf_v, &mut self.cur_frame.plane_v, &mut self.dec_buf_v)]
@@ -284,7 +298,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
                 let blocks_wide = x.2.width / 16;
                 let blocks_high = x.2.height / 16;
 
-                ImageSlice::decode_delta_plane_2(blocks_wide, blocks_high, &x.0, x.1, x.3, x.2);
+                ImageSlice::decode_delta_plane_2(blocks_wide, blocks_high, &x.0, x.1, x.3, x.2, &qtable);
             });
         }
 

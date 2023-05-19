@@ -114,9 +114,6 @@ lazy_static! {
         println!("INV: {:?}", table);
         table
     };*/
-
-    pub static ref Q_TABLE_INTER_SCALED: [f32;64] = DctMatrix8x8::transform_qtable(&Q_TABLE_INTER, 8);
-    pub static ref Q_TABLE_INTRA_SCALED: [f32;64] = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8);
 }
 
 /// Represents an 8x8 row-order matrix of DCT coefficients
@@ -136,16 +133,15 @@ impl DctMatrix8x8 {
         DctMatrix8x8 { m: [0.0;64] }
     }
 
-    pub fn transform_qtable(q_table: &[f32;64], bits: u32) -> [f32;64] {
+    pub fn transform_qtable(q_table: &[f32;64], bits: u32, qscale: i32) -> [f32;64] {
         let mut result = [0.0;64];
         let max = (1 << (bits - 1)) as f32;
 
-        for idx in 0..64 {
-            let q = q_table[idx];
-            let scale = (1024.0 / q) / max;
-            let d = q * scale;
+        let qscale_f = qscale as f32 / 7.0;
 
-            result[idx] = d;
+        for idx in 0..64 {
+            let q = (q_table[idx] * qscale_f).max(1.0);
+            result[idx] = q * (1024.0 / max);
         }
 
         result
