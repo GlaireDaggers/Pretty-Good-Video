@@ -44,3 +44,19 @@ for _ in 0..dec.num_frames {
 // outputs audio into vector of Vec<i16> audio buffers (one buffer per channel). All buffers must have same length.
 dec.decode_audio(my_output_buffers).unwrap();
 ```
+
+## Codec Comparisons
+
+While mostly a toy codec, I have still done some benchmarking & comparisons of other codecs - mostly against libtheora.
+
+For a particular 1280x720 30FPS video (which I cannot include due to copyright), I compared visual quality, file size, and speed of decoding the entire
+sequence from beginning to end (3774 frames total).
+
+The CPU used to perform these tests was an i5-9300H at 2400 MHz. Both tests were compiled with -O3 for Skylake architecture.
+
+PGVs results are visually slightly worse than Theora set to 5 mbits/sec, and the file sizes are slightly larger. However, video decoding is a bit faster, and additionally audio decoding is very lightweight as a QOA-based scheme is used (though audio performance was not measured here - you can read the QOA author's [own benchmarks](https://phoboslab.org/log/2023/04/qoa-specification))
+
+| codec | library | file size | time to decode |
+| --- | --- | --- | --- |
+| Theora | libtheora (via TheoraPlay) | 53.4 MB | 6700 ms |
+| PGV | pgv_rs | 60 MB | 5400 ms |
