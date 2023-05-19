@@ -1,5 +1,5 @@
 # Pretty-Good-Video
-A toy MPEG-like video codec
+A toy MPEG-like video codec primarily designed for offline video playback in games & other applications
 
 ## Encoding videos
 
