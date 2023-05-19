@@ -8,7 +8,7 @@ Create pgv_rs::enc::Encoder, feed in frames & audio, and then write to file:
 ```rs
 use pgv_rs::enc::Encoder;
 
-let mut enc = Encoder::new(width, height, framerate, samplerate, audio_channels);
+let mut enc = Encoder::new(width, height, framerate, 0, samplerate, audio_channels);
 
 // feed in frames as VideoFrames (1 keyframe every 15 frames)
 for (idx, frame) in &my_frames.iter().enumerate() {
@@ -54,7 +54,7 @@ sequence from beginning to end (3774 frames total).
 
 The CPU used to perform these tests was an i5-9300H at 2400 MHz. Both tests were compiled with -O3 for Skylake architecture.
 
-PGVs results are visually slightly worse than Theora set to 5 mbits/sec, and the file sizes are slightly larger. However, video decoding is a bit faster, and additionally audio decoding is very lightweight as a QOA-based scheme is used (though audio performance was not measured here - you can read the QOA author's [own benchmarks](https://phoboslab.org/log/2023/04/qoa-specification))
+PGVs results at qscale=0 are visually slightly worse than Theora set to 5 mbits/sec, and the file sizes are slightly larger. However, video decoding is a bit faster, and additionally audio decoding is very lightweight as a QOA-based scheme is used (though audio performance was not measured here - you can read the QOA author's [own benchmarks](https://phoboslab.org/log/2023/04/qoa-specification))
 
 | codec | library | file size | time to decode |
 | --- | --- | --- | --- |

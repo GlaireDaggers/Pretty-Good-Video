@@ -416,7 +416,7 @@ mod tests {
 
     #[test]
     fn test_encoder_2() {
-        let mut encoder = Encoder::new(1280, 720, 30, 1, 48000, 2);
+        let mut encoder = Encoder::new(1280, 720, 30, 0, 48000, 2);
 
         for frame_id in 1..100 {
             let frame_path = format!("test_frames_2/{:0>3}.png", frame_id);
