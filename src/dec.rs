@@ -172,7 +172,7 @@ impl<TReader: Read + Seek> Decoder<TReader> {
         let blocks_chroma = chroma_blocks_wide * chroma_blocks_high;
 
         let total_blocks = blocks_luma + (blocks_chroma * 2);
-        let rle_buffer_len = total_blocks * 256;
+        let rle_buffer_len = total_blocks * 256 * 2;
 
         Ok(Decoder {
             version: version,
@@ -231,8 +231,8 @@ impl<TReader: Read + Seek> Decoder<TReader> {
 
             assert!(qscale >= 0 && qscale <= 8);
 
-            self.qtable_inter = DctMatrix8x8::transform_qtable(&Q_TABLE_INTER, 8, qscale);
-            self.qtable_intra = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8, qscale);
+            self.qtable_inter = DctMatrix8x8::transform_qtable(&Q_TABLE_INTER, qscale);
+            self.qtable_intra = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, qscale);
 
             let mut huffman_table = [0;256];
             self.reader.read_exact(&mut huffman_table)?;
@@ -538,7 +538,10 @@ impl<TReader: Read + Seek> Decoder<TReader> {
 
     fn decode_subblock<R: Read + Seek>(reader: &mut R) -> Result<DctQuantizedMatrix8x8, std::io::Error> {
         let mut subblock_data = [0;64];
-        reader.read_exact(&mut subblock_data)?;
+
+        for i in 0..64 {
+            subblock_data[i] = reader.read_i16::<LittleEndian>()?;
+        }
 
         // inv zigzag scan to get final subblock data
         Ok(DctQuantizedMatrix8x8 { m: subblock_data })

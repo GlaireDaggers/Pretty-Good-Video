@@ -29,8 +29,8 @@ impl Encoder {
 
         Encoder { width: width, height: height, framerate: framerate, audio_samplerate: audio_samplerate, audio_channels: audio_channels,
             frames: Vec::new(), audio: Vec::new(), prev_frame: VideoFrame::new_padded(width, height),
-            qtable_inter: DctMatrix8x8::transform_qtable(&Q_TABLE_INTER, 8, qscale),
-            qtable_intra: DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8, qscale),
+            qtable_inter: DctMatrix8x8::transform_qtable(&Q_TABLE_INTER, qscale),
+            qtable_intra: DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, qscale),
             qscale: qscale }
     }
 
@@ -195,7 +195,7 @@ impl Encoder {
             let mut rle_results: Vec<Vec<u8>> = Vec::new();
 
             for frame in group {
-                let mut dct_coeffs = Vec::new();
+                let mut dct_coeffs = Cursor::new(Vec::new());
                 
                 let blocks = match frame {
                     EncodedFrame::IFrame(i) => {
@@ -208,9 +208,13 @@ impl Encoder {
 
                 for block in blocks {
                     for subblock in block.subblocks {
-                        dct_coeffs.extend_from_slice(&subblock.m);
+                        for m in subblock.m {
+                            dct_coeffs.write_i16::<LittleEndian>(m)?;
+                        }
                     }
                 }
+
+                let dct_coeffs = dct_coeffs.into_inner();
 
                 let mut tmp_rle = Cursor::new(Vec::new());
                 Encoder::runlength_encode(&dct_coeffs, &mut tmp_rle)?;

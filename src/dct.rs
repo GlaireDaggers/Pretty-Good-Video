@@ -125,7 +125,7 @@ pub struct DctMatrix8x8 {
 /// Represents an 8x8 row-order matrix of quantized DCT coefficients
 #[derive(Clone, Copy, Debug)]
 pub struct DctQuantizedMatrix8x8 {
-    pub m: [u8;64]
+    pub m: [i16;64]
 }
 
 impl DctMatrix8x8 {
@@ -133,15 +133,14 @@ impl DctMatrix8x8 {
         DctMatrix8x8 { m: [0.0;64] }
     }
 
-    pub fn transform_qtable(q_table: &[f32;64], bits: u32, qscale: i32) -> [f32;64] {
+    pub fn transform_qtable(q_table: &[f32;64], qscale: i32) -> [f32;64] {
         let mut result = [0.0;64];
-        let max = (1 << (bits - 1)) as f32;
 
         let qscale_f = qscale as f32 / 7.0;
 
         for idx in 0..64 {
             let q = (q_table[idx] * qscale_f).max(1.0);
-            result[idx] = q * (1024.0 / max);
+            result[idx] = q;
         }
 
         result
@@ -162,7 +161,7 @@ impl DctMatrix8x8 {
 
         for idx in 0..8 {
             let c = src.m[INV_ZIGZAG_TABLE[idx]];
-            let n = c as i8 as f32;
+            let n = c as f32;
             let d = q_table[idx];
 
             result.m[idx] = n * d;
@@ -170,7 +169,7 @@ impl DctMatrix8x8 {
 
         for idx in 8..16 {
             let c = src.m[INV_ZIGZAG_TABLE[idx]];
-            let n = c as i8 as f32;
+            let n = c as f32;
             let d = q_table[idx];
 
             result.m[idx] = n * d;
@@ -178,7 +177,7 @@ impl DctMatrix8x8 {
 
         for idx in 16..24 {
             let c = src.m[INV_ZIGZAG_TABLE[idx]];
-            let n = c as i8 as f32;
+            let n = c as f32;
             let d = q_table[idx];
 
             result.m[idx] = n * d;
@@ -186,7 +185,7 @@ impl DctMatrix8x8 {
 
         for idx in 24..32 {
             let c = src.m[INV_ZIGZAG_TABLE[idx]];
-            let n = c as i8 as f32;
+            let n = c as f32;
             let d = q_table[idx];
 
             result.m[idx] = n * d;
@@ -194,7 +193,7 @@ impl DctMatrix8x8 {
 
         for idx in 32..40 {
             let c = src.m[INV_ZIGZAG_TABLE[idx]];
-            let n = c as i8 as f32;
+            let n = c as f32;
             let d = q_table[idx];
 
             result.m[idx] = n * d;
@@ -202,7 +201,7 @@ impl DctMatrix8x8 {
 
         for idx in 40..48 {
             let c = src.m[INV_ZIGZAG_TABLE[idx]];
-            let n = c as i8 as f32;
+            let n = c as f32;
             let d = q_table[idx];
 
             result.m[idx] = n * d;
@@ -210,7 +209,7 @@ impl DctMatrix8x8 {
 
         for idx in 48..56 {
             let c = src.m[INV_ZIGZAG_TABLE[idx]];
-            let n = c as i8 as f32;
+            let n = c as f32;
             let d = q_table[idx];
 
             result.m[idx] = n * d;
@@ -218,7 +217,7 @@ impl DctMatrix8x8 {
 
         for idx in 56..64 {
             let c = src.m[INV_ZIGZAG_TABLE[idx]];
-            let n = c as i8 as f32;
+            let n = c as f32;
             let d = q_table[idx];
 
             result.m[idx] = n * d;
@@ -234,7 +233,7 @@ impl DctMatrix8x8 {
             let n = self.m[ZIGZAG_TABLE[idx]];
             let d = q_table[idx];
 
-            result.m[idx] = (n / d) as i8 as u8;
+            result.m[idx] = (n / d) as i16;
         }
 
         result

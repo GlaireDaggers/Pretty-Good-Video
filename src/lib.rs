@@ -41,7 +41,7 @@ mod tests {
 
             let mut enc_blocks = Vec::with_capacity(TOTAL_BLOCKS as usize);
 
-            let qtable = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8, 1);
+            let qtable = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 1);
 
             for _ in 0..TOTAL_BLOCKS {
                 let mut matrix = DctMatrix8x8::new();
@@ -360,7 +360,7 @@ mod tests {
         let mut inp_audio_file = File::open("test_audio.wav").unwrap();
         let (audio_header, audio_data) = wav::read(&mut inp_audio_file).unwrap();
 
-        let mut encoder = Encoder::new(512, 384, 24, 0, audio_header.sampling_rate, audio_header.channel_count as u32);
+        let mut encoder = Encoder::new(512, 384, 24, 8, audio_header.sampling_rate, audio_header.channel_count as u32);
 
         for frame_id in 1..163 {
             let frame_path = format!("test_frames/{:0>3}.png", frame_id);
@@ -523,7 +523,7 @@ mod tests {
     #[test]
     fn test_encode_iplane() {
         let frame = load_greyscale_plane("test1.png");
-        let qtable = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8, 1);
+        let qtable = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 1);
         let encoded_plane = frame.encode_plane(&qtable);
         let decoded_plane = ImageSlice::decode_plane(&encoded_plane, &qtable);
         save_greyscale_plane("test1_enc.png", &decoded_plane);
@@ -537,7 +537,7 @@ mod tests {
         let cells_w = frame.width / 8;
         let cells_h = frame.height / 8;
 
-        let qtable = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 8, 1);
+        let qtable = DctMatrix8x8::transform_qtable(&Q_TABLE_INTRA, 1);
 
         for j in 0..cells_h {
             for i in 0..cells_w {
