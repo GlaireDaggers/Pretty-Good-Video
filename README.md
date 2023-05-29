@@ -1,6 +1,8 @@
 # Pretty-Good-Video
 A toy MPEG-like video codec primarily designed for offline video playback in games & other applications
 
+PGV has been succeeded by a new codec, [PFV](https://github.com/GlaireDaggers/Pretty-Good-Video), which should be used instead.
+
 ## Encoding videos
 
 Create pgv_rs::enc::Encoder, feed in frames & audio, and then write to file:
