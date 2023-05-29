@@ -1,7 +1,7 @@
 # Pretty-Good-Video
 A toy MPEG-like video codec primarily designed for offline video playback in games & other applications
 
-PGV has been succeeded by a new codec, [PFV](https://github.com/GlaireDaggers/Pretty-Good-Video), which should be used instead.
+PGV has been succeeded by a new codec, [PFV](https://github.com/GlaireDaggers/Pretty-Fast-Video), which should be used instead.
 
 ## Encoding videos
 
